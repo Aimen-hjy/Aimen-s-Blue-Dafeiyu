@@ -39,6 +39,8 @@ pet/
 
 ## 待办 / 后续
 
-- [ ] 用户提供 fish.png
+- [x] 用户提供 `大肥鱼.jpg` → 抠黑底 → 透明 `pet/assets/fish.png`
+- [x] Electron 骨架（透明置顶窗口 + 拖拽/点击/待机动画 + 信息面板）
 - [ ] DeepSeek token 消耗明细（当前 balance 接口只有余额，无逐日 token；需确认数据源）
 - [ ] 校园信息提醒（上课前/作业截止前气泡）
+- [ ] MiniMax key（已本地保存未入库）：后续可用 `image-01` 生成额外表情/姿态帧

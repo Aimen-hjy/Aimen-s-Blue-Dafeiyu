@@ -1,0 +1,192 @@
+const { app, BrowserWindow, ipcMain, screen } = require('electron');
+const path = require('node:path');
+const fs = require('node:fs');
+const os = require('node:os');
+
+let petWin = null;
+let panelWin = null;
+
+/** 从 env / dsh 凭据 / pet config 依次解析 DeepSeek API Key（本地秘密，绝不外发）。 */
+function resolveDeepSeekKey() {
+  if (process.env.DEEPSEEK_API_KEY) return process.env.DEEPSEEK_API_KEY.trim();
+  for (const p of [
+    path.join(os.homedir(), '.dsh', '.credentials.yaml'),
+    path.join(os.homedir(), '.dsh', 'credentials.yaml'),
+  ]) {
+    try {
+      const txt = fs.readFileSync(p, 'utf8');
+      const m = txt.match(/DEEPSEEK_API_KEY:\s*(\S+)/) || txt.match(/sk-[A-Za-z0-9_-]{10,}/);
+      if (m) return (m[1] || m[0]).trim();
+    } catch {}
+  }
+  try {
+    const cfg = JSON.parse(fs.readFileSync(path.join(__dirname, 'config.json'), 'utf8'));
+    if (cfg.deepseekApiKey) return String(cfg.deepseekApiKey).trim();
+  } catch {}
+  return null;
+}
+
+async function fetchDeepSeekBalance() {
+  const key = resolveDeepSeekKey();
+  if (!key) return { ok: false, error: '未找到 DeepSeek API Key' };
+  try {
+    const res = await fetch('https://api.deepseek.com/user/balance', {
+      headers: { Authorization: `Bearer ${key}` },
+    });
+    if (!res.ok) return { ok: false, error: `balance 接口 HTTP ${res.status}` };
+    const data = await res.json();
+    const info = data.balance_infos?.[0];
+    return {
+      ok: true,
+      isAvailable: data.is_available,
+      currency: info?.currency ?? null,
+      totalBalance: info?.total_balance ?? null,
+      grantedBalance: info?.granted_balance ?? null,
+      toppedUpBalance: info?.topped_up_balance ?? null,
+    };
+  } catch (e) {
+    return { ok: false, error: String((e && e.message) || e) };
+  }
+}
+
+/** 计算「今天上海时区」的课程列表（只读本地缓存，不做网络请求）。 */
+function todayClasses(lessons, semesterStart) {
+  if (!semesterStart || !Array.isArray(lessons)) return [];
+  const DAY = 86400000;
+  const startUtc = Date.parse(semesterStart + 'T00:00:00+08:00');
+  if (!Number.isFinite(startUtc)) return [];
+  const startDow = ((new Date(startUtc).getUTCDay() + 6) % 7) + 1; // 1=周一..7=周日
+  const week1Monday = startUtc - (startDow - 1) * DAY;
+  const nowSh = new Date(Date.now() + 8 * 3600000); // 平移到上海时区
+  const todayMidSh = Date.UTC(nowSh.getUTCFullYear(), nowSh.getUTCMonth(), nowSh.getUTCDate());
+  const todayUtc = todayMidSh - 8 * 3600000;
+  const weekday = ((nowSh.getUTCDay() + 6) % 7) + 1;
+  const week = Math.floor((todayUtc - week1Monday) / (7 * DAY)) + 1;
+  return lessons
+    .filter((l) => l.weekday === weekday && Array.isArray(l.weekNumbers) && l.weekNumbers.includes(week))
+    .sort((a, b) => a.startPeriod - b.startPeriod)
+    .map((l) => ({
+      course: l.courseName,
+      room: l.classroom || '',
+      periods: l.periodsText || `${l.startPeriod}-${l.endPeriod}节`,
+    }));
+}
+
+function readCampusInfo() {
+  const statePath = path.join(os.homedir(), '.campus-agent', 'state.json');
+  let state;
+  try {
+    state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+  } catch {
+    return { ok: false, error: '未找到 campus-agent 状态' };
+  }
+  const tt = state.timetable || {};
+  const semesters = Object.keys(tt.lessons || {});
+  const semester = semesters[0];
+  if (!semester) return { ok: false, error: '课表尚未同步' };
+  const lessons = tt.lessons[semester] || [];
+  const semesterStart = tt.sync?.[semester]?.semesterStart || null;
+  return {
+    ok: true,
+    semester,
+    lessonCount: lessons.length,
+    semesterStart,
+    today: todayClasses(lessons, semesterStart),
+  };
+}
+
+async function getInfo() {
+  const [deepseek, campus] = await Promise.all([fetchDeepSeekBalance(), readCampusInfo()]);
+  return { deepseek, campus, now: new Date().toISOString() };
+}
+
+function createPetWindow() {
+  petWin = new BrowserWindow({
+    width: 240,
+    height: 240,
+    transparent: true,
+    backgroundColor: '#00000000',
+    frame: false,
+    resizable: false,
+    hasShadow: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  petWin.setAlwaysOnTop(true, 'screen-saver');
+  // 初始放到主屏工作区右下角
+  const wa = screen.getPrimaryDisplay().workArea;
+  petWin.setPosition(wa.x + wa.width - 240 - 24, wa.y + wa.height - 240 - 24);
+  petWin.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+}
+
+function createPanelWindow() {
+  panelWin = new BrowserWindow({
+    width: 340,
+    height: 460,
+    show: false,
+    transparent: true,
+    backgroundColor: '#00000000',
+    frame: false,
+    resizable: false,
+    hasShadow: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  panelWin.setAlwaysOnTop(true, 'screen-saver');
+  panelWin.loadFile(path.join(__dirname, 'renderer', 'panel.html'));
+  panelWin.on('blur', () => {
+    if (panelWin && panelWin.isVisible()) panelWin.hide();
+  });
+}
+
+function togglePanel() {
+  if (!panelWin || !petWin) return;
+  if (panelWin.isVisible()) {
+    panelWin.hide();
+    return;
+  }
+  const [x, y] = petWin.getPosition();
+  const [w, h] = petWin.getSize();
+  const display = screen.getDisplayMatching({ x, y, width: w, height: h });
+  const wa = display.workArea;
+  const bounds = panelWin.getBounds();
+  let px = x + w + 12;
+  let py = y;
+  if (px + bounds.width > wa.x + wa.width) px = x - bounds.width - 12;
+  py = Math.max(wa.y, Math.min(py, wa.y + wa.height - bounds.height));
+  panelWin.setPosition(Math.round(px), Math.round(py));
+  panelWin.show();
+  panelWin.webContents.send('panel:refresh');
+}
+
+app.whenReady().then(() => {
+  createPetWindow();
+  createPanelWindow();
+  console.log('[pet] 启动成功，窗口已创建');
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('[pet] 未捕获异常:', err && err.stack ? err.stack : err);
+});
+
+app.on('window-all-closed', () => app.quit());
+
+ipcMain.handle('pet:get-position', () => (petWin ? petWin.getPosition() : [0, 0]));
+ipcMain.on('pet:move', (_e, x, y) => {
+  if (petWin) petWin.setPosition(Math.round(x), Math.round(y));
+});
+ipcMain.on('pet:toggle-panel', () => togglePanel());
+ipcMain.on('pet:close-panel', () => {
+  if (panelWin) panelWin.hide();
+});
+ipcMain.handle('pet:get-info', () => getInfo());

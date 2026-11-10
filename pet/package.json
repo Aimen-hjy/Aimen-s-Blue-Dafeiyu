@@ -1,0 +1,13 @@
+{
+  "name": "campus-agent-pet",
+  "version": "0.1.0",
+  "private": true,
+  "description": "campus-agent 桌宠 —— 蓝色大肥鱼（DeepSeek 拟人形象）",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^45.2.3"
+  }
+}
