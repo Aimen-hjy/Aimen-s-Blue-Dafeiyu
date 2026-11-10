@@ -2,6 +2,10 @@
 
 Electron 透明置顶窗口的桌面宠物，蓝色大肥鱼（DeepSeek 拟人形象）。
 
+动画素材使用 **透明 webm**（VP9-alpha）片段，每个动作一段，来自
+[PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet)（MIT 许可），
+已拷贝常用片段到 `assets/webm/`。
+
 ## 运行
 
 ```bash
@@ -12,8 +16,9 @@ npm start
 
 ## 交互
 
-- **拖拽**：移动位置
-- **单击**：挤压反应 + 随机气泡
+- **待机**：循环播放「待机呼吸休闲」（透明 webm）
+- **单击**：随机播放一个「点击回应」动画（5 选 1）+ 随机气泡
+- **拖拽**：播放「被鼠标拖拽悬空反馈」，跟随鼠标移动
 - **右键 / 双击**：打开状态面板（校园信息 + DeepSeek 余额）
 
 ## 数据来源
@@ -23,9 +28,18 @@ npm start
 
 ## 素材
 
-- `assets/fish.png`：透明底的大肥鱼（由 `fish-source.jpg` 抠黑底生成）
-- `assets/fish-source.jpg`：用户提供的原始图
+- `assets/webm/`：透明动画片段（待机 1 段 + 点击回应 5 段 + 拖拽 1 段），来源 dsh-pet
+- `assets/fish.png`：透明底的大肥鱼静态图（早期占位，现已改用 webm 动画）
+- `assets/fish-source.jpg`：用户最初提供的原始图
+
+## 动画实现
+
+渲染进程用单个 `<video>` 元素切换 `src` 播放不同片段（`renderer.js`）：
+
+- 待机 / 拖拽用 `loop`，点击回应是一次性（`ended` 后回落待机）
+- 点击片段在启动时用隐藏 `<video preload="auto">` 预加载，避免首次点击解码卡顿
+- 窗口为 16:9（400×225），与 640×360 素材等比，`object-fit: contain` 避免变形
 
 ## 性能说明
 
-待机动画只走 CSS `transform`/`opacity`（GPU 合成层），持续动画不经过 JS 主循环；拖拽/点击期间才短暂用 JS，空闲 CPU 占用极低。
+动画完全由 Chromium 的视频解码器处理，空闲时 JS 主循环不参与持续动画；拖拽/点击期间才短暂走 JS。

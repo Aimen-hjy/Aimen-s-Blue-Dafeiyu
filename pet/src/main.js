@@ -102,8 +102,8 @@ async function getInfo() {
 
 function createPetWindow() {
   petWin = new BrowserWindow({
-    width: 240,
-    height: 240,
+    width: 400,
+    height: 225,
     transparent: true,
     backgroundColor: '#00000000',
     frame: false,
@@ -120,7 +120,7 @@ function createPetWindow() {
   petWin.setAlwaysOnTop(true, 'screen-saver');
   // 初始放到主屏工作区右下角
   const wa = screen.getPrimaryDisplay().workArea;
-  petWin.setPosition(wa.x + wa.width - 240 - 24, wa.y + wa.height - 240 - 24);
+  petWin.setPosition(wa.x + wa.width - 400 - 24, wa.y + wa.height - 225 - 24);
   petWin.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 }
 

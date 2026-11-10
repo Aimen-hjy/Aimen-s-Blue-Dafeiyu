@@ -16,57 +16,16 @@ body {
   height: 100%;
 }
 
-#react {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  will-change: transform;
-}
-
-#swim {
-  will-change: transform;
-  animation: swim 4.5s ease-in-out infinite;
-}
-
-#fish {
-  width: 172px;
-  height: auto;
+#pet-video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
   cursor: grab;
-  will-change: transform;
-  animation: breathe 3.2s ease-in-out infinite;
   -webkit-user-drag: none;
 }
 
-#fish:active {
+#pet-video:active {
   cursor: grabbing;
-}
-
-@keyframes swim {
-  0%,
-  100% {
-    transform: translateY(0) rotate(-2deg);
-  }
-  25% {
-    transform: translateY(-8px) rotate(1deg);
-  }
-  50% {
-    transform: translateY(0) rotate(2.5deg);
-  }
-  75% {
-    transform: translateY(6px) rotate(-1deg);
-  }
-}
-
-@keyframes breathe {
-  0%,
-  100% {
-    transform: scale(1, 1);
-  }
-  50% {
-    transform: scale(1.03, 0.97);
-  }
 }
 
 #bubble {
