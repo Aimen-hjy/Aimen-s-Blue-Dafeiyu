@@ -1,0 +1,22 @@
+{
+  "canvas": {
+    "baseUrl": "https://oc.sjtu.edu.cn",
+    "accessToken": ""
+  },
+  "mail": {
+    "imap": { "host": "", "port": 993, "user": "", "password": "", "tls": true },
+    "smtp": { "host": "", "port": 465, "user": "", "password": "", "secure": true }
+  },
+  "campus": {
+    "cookie": "",
+    "username": "",
+    "password": "",
+    "semesterStarts": {}
+  },
+  "shuiyuan": {
+    "key": "",
+    "clientId": "",
+    "username": "",
+    "boundAt": ""
+  }
+}
