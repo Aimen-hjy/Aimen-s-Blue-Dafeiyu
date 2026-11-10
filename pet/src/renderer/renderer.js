@@ -4,7 +4,6 @@ const bubble = document.getElementById('bubble');
 
 const BASE = '../../assets/webm/';
 const IDLE = BASE + encodeURIComponent('待机呼吸休闲') + '.webm';
-const DRAG = BASE + encodeURIComponent('被鼠标拖拽悬空反馈') + '.webm';
 const CLICKS = [
   '点击回应-开心跃动',
   '点击回应-害羞惊讶',
@@ -30,7 +29,6 @@ let winX = 0;
 let winY = 0;
 let bubbleTimer = null;
 let currentSrc = null;
-let currentState = 'idle';
 
 // 预加载点击动画，避免首次点击的解码卡顿
 for (const src of CLICKS) {
@@ -56,17 +54,10 @@ function play(src, { loop = false, onEnd = null } = {}) {
 }
 
 function playIdle() {
-  currentState = 'idle';
   play(IDLE, { loop: true });
 }
 
-function playDrag() {
-  currentState = 'drag';
-  play(DRAG, { loop: true });
-}
-
 function playClick() {
-  currentState = 'click';
   const src = CLICKS[Math.floor(Math.random() * CLICKS.length)];
   play(src, { loop: false, onEnd: playIdle });
 }
@@ -88,20 +79,23 @@ window.addEventListener('mousemove', (e) => {
   const dx = e.screenX - startX;
   const dy = e.screenY - startY;
   if (Math.abs(dx) + Math.abs(dy) > 4) {
-    if (!moved) {
-      moved = true;
-      playDrag();
-    }
+    moved = true;
     window.petAPI.move(winX + dx, winY + dy);
+    // 拖拽反馈：跟随方向轻微倾斜（不换片段、不改大小，避免“变大”）
+    const tilt = Math.max(-10, Math.min(10, dx * 0.35));
+    video.style.transform = `rotate(${tilt}deg)`;
   }
 });
 
 window.addEventListener('mouseup', () => {
   if (!dragging) return;
   dragging = false;
-  if (moved) {
-    playIdle();
-  } else {
+  video.style.transition = 'transform 0.2s ease';
+  video.style.transform = '';
+  setTimeout(() => {
+    video.style.transition = '';
+  }, 220);
+  if (!moved) {
     playClick();
     showBubble(PHRASES[Math.floor(Math.random() * PHRASES.length)]);
   }
