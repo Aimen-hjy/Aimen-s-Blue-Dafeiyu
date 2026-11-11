@@ -8,13 +8,20 @@
       html,
       body {
         margin: 0;
-        padding: 14px;
+        padding: 12px;
+        height: 100%;
+        box-sizing: border-box;
         background: transparent;
         font: 14px/1.5 "Microsoft YaHei", "PingFang SC", sans-serif;
         user-select: none;
         -webkit-user-select: none;
+        overflow: hidden;
       }
       #panel {
+        position: relative;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
         background: #ffffff;
         border-radius: 14px;
         box-shadow: 0 8px 30px rgba(0, 0, 0, 0.22);
@@ -22,6 +29,7 @@
         color: #1f2937;
       }
       #header {
+        flex-shrink: 0;
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -41,6 +49,14 @@
         cursor: pointer;
         font-size: 14px;
         line-height: 1;
+      }
+      #scroll {
+        flex: 1;
+        overflow-y: auto;
+      }
+      /* 去掉右侧滑动条，仍可用滚轮滚动 */
+      #scroll::-webkit-scrollbar {
+        display: none;
       }
       section {
         padding: 12px 14px;
@@ -68,6 +84,25 @@
       b {
         color: #2563eb;
       }
+      #grip {
+        position: absolute;
+        right: 0;
+        bottom: 0;
+        width: 20px;
+        height: 20px;
+        cursor: nwse-resize;
+        z-index: 10;
+      }
+      #grip::after {
+        content: '';
+        position: absolute;
+        right: 4px;
+        bottom: 4px;
+        width: 8px;
+        height: 8px;
+        border-right: 2px solid #cbd5e1;
+        border-bottom: 2px solid #cbd5e1;
+      }
     </style>
   </head>
   <body>
@@ -76,18 +111,21 @@
         <span>大肥鱼 · 状态</span>
         <button id="close" title="关闭">×</button>
       </div>
-      <section>
-        <h3>今日课程</h3>
-        <div id="campus">加载中…</div>
-      </section>
-      <section>
-        <h3>Canvas 任务</h3>
-        <div id="canvas">加载中…</div>
-      </section>
-      <section>
-        <h3>DeepSeek</h3>
-        <div id="deepseek">加载中…</div>
-      </section>
+      <div id="scroll">
+        <section>
+          <h3>今日课程</h3>
+          <div id="campus">加载中…</div>
+        </section>
+        <section>
+          <h3>Canvas 任务</h3>
+          <div id="canvas">加载中…</div>
+        </section>
+        <section>
+          <h3>DeepSeek</h3>
+          <div id="deepseek">加载中…</div>
+        </section>
+      </div>
+      <div id="grip" title="拖动缩放"></div>
     </div>
     <script src="panel.js"></script>
   </body>

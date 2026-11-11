@@ -112,3 +112,28 @@ window.addEventListener('mousemove', (e) => {
 window.addEventListener('mouseup', () => {
   dragging = false;
 });
+
+// —— 右下角把手拖动缩放面板 ——
+const grip = document.getElementById('grip');
+let resizing = false;
+
+grip.addEventListener('mousedown', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  resizing = true;
+  const sx = e.screenX;
+  const sy = e.screenY;
+  window.petAPI.getPanelSize().then(([w0, h0]) => {
+    const move = (ev) => {
+      if (!resizing) return;
+      window.petAPI.resizePanel(w0 + (ev.screenX - sx), h0 + (ev.screenY - sy));
+    };
+    const up = () => {
+      resizing = false;
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  });
+});

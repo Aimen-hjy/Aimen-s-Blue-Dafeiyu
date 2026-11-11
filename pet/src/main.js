@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, screen, desktopCapturer, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, desktopCapturer, shell, Menu } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -294,6 +294,75 @@ function openDsh() {
   }
 }
 
+/**
+ * 用 DSH（DeepSeek Harness）headless 模式跑一次对话：`dsh --profile headless --json`。
+ * 流式回传 text 事件给 onToken，结束时 onDone 带上 sessionId（下次 --session-id 续聊）。
+ * 视觉问答不走这里（DSH CLI 只吃文本），截图用 callDeepSeek 直连 deepseek-flash。
+ */
+function runDshChat(text, sessionId, onToken, onDone) {
+  const key = resolveDeepSeekKey();
+  if (!key) {
+    onDone({ ok: false, error: '未找到 DeepSeek API Key' });
+    return;
+  }
+  const npxBin = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+  const args = ['--yes', '@deepseek-ai/dsh', '--profile', 'headless', '--json'];
+  if (sessionId) args.push('--session-id', sessionId);
+  args.push(text);
+  let child;
+  try {
+    child = spawn(npxBin, args, {
+      env: { ...process.env, DEEPSEEK_API_KEY: key },
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+  } catch (e) {
+    onDone({ ok: false, error: String((e && e.message) || e) });
+    return;
+  }
+  let finished = false;
+  const finish = (r) => {
+    if (finished) return;
+    finished = true;
+    onDone(r);
+  };
+  let sid = sessionId || null;
+  let finalText = '';
+  let finalErr = null;
+  let errBuf = '';
+  let buf = '';
+  child.stdout.setEncoding('utf8');
+  child.stdout.on('data', (chunk) => {
+    buf += chunk;
+    let idx;
+    while ((idx = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, idx).trim();
+      buf = buf.slice(idx + 1);
+      if (!line) continue;
+      let ev;
+      try { ev = JSON.parse(line); } catch { continue; } // 跳过非 JSON 的日志行
+      if (ev.type === 'session' && ev.sessionId) sid = ev.sessionId;
+      else if (ev.type === 'text' && typeof ev.text === 'string' && ev.text) onToken(ev.text);
+      else if (ev.type === 'final') {
+        if (ev.sessionId) sid = ev.sessionId;
+        if (ev.reason && ev.reason.kind === 'error') {
+          finalErr = (ev.reason.error && ev.reason.error.message) || 'DSH 执行出错';
+        } else {
+          finalText = ev.text || '';
+        }
+      }
+    }
+  });
+  child.stderr.setEncoding('utf8');
+  child.stderr.on('data', (c) => { errBuf += c; });
+  child.on('error', (e) => finish({ ok: false, error: String((e && e.message) || e), sessionId: sid }));
+  child.on('close', (code) => {
+    if (finalErr) finish({ ok: false, error: finalErr, sessionId: sid });
+    else if (finalText || code === 0) finish({ ok: true, text: finalText, sessionId: sid });
+    else finish({ ok: false, error: (errBuf || 'DSH 无输出').trim().slice(0, 300), sessionId: sid });
+  });
+}
+
 function createPetWindow() {
   petWin = new BrowserWindow({
     width: PET_WIDTH,
@@ -331,7 +400,9 @@ function createPanelWindow() {
     transparent: true,
     backgroundColor: '#00000000',
     frame: false,
-    resizable: false,
+    resizable: true,
+    minWidth: 300,
+    minHeight: 360,
     hasShadow: false,
     skipTaskbar: true,
     alwaysOnTop: true,
@@ -386,7 +457,9 @@ function createChatWindow() {
     transparent: true,
     backgroundColor: '#00000000',
     frame: false,
-    resizable: false,
+    resizable: true,
+    minWidth: 300,
+    minHeight: 400,
     hasShadow: false,
     skipTaskbar: true,
     alwaysOnTop: true,
@@ -473,9 +546,47 @@ ipcMain.handle('chat:get-position', () => (chatWin ? chatWin.getPosition() : [0,
 ipcMain.on('chat:move', (_e, x, y) => {
   if (chatWin) chatWin.setBounds({ x: Math.round(x), y: Math.round(y), width: CHAT_WIDTH, height: CHAT_HEIGHT });
 });
-ipcMain.handle('chat:send', (_e, messages) => {
-  if (!Array.isArray(messages)) return { ok: false, error: '消息格式错误' };
-  return callDeepSeek(messages);
+ipcMain.on('chat:send', (_e, text, sessionId) => {
+  if (!chatWin) return;
+  runDshChat(
+    String(text || ''),
+    sessionId || null,
+    (token) => chatWin.webContents.send('chat:token', token),
+    (result) => chatWin.webContents.send('chat:done', result)
+  );
+});
+ipcMain.handle('chat:ask-image', (_e, dataUrl, text) => {
+  if (typeof dataUrl !== 'string' || !dataUrl) return { ok: false, error: '缺少截图数据' };
+  return callDeepSeek([
+    {
+      role: 'user',
+      content: [
+        { type: 'image_url', image_url: { url: dataUrl } },
+        { type: 'text', text: text || '请描述这张屏幕截图，说说上面有什么、重点信息是什么。' },
+      ],
+    },
+  ]);
 });
 ipcMain.handle('chat:screenshot', () => captureScreen());
 ipcMain.handle('chat:open-dsh', () => openDsh());
+// 右键菜单：选择打开状态面板还是对话窗
+ipcMain.on('pet:context-menu', () => {
+  const menu = Menu.buildFromTemplate([
+    { label: '状态面板', click: () => togglePanel() },
+    { label: '对话', click: () => toggleChat() },
+  ]);
+  menu.popup({ window: petWin });
+});
+// 窗口缩放（右下角把手拖动）
+ipcMain.on('panel:resize', (_e, w, h) => {
+  if (!panelWin) return;
+  const [x, y] = panelWin.getPosition();
+  panelWin.setBounds({ x, y, width: Math.max(300, Math.round(w)), height: Math.max(360, Math.round(h)) });
+});
+ipcMain.handle('panel:get-size', () => (panelWin ? panelWin.getSize() : [0, 0]));
+ipcMain.on('chat:resize', (_e, w, h) => {
+  if (!chatWin) return;
+  const [x, y] = chatWin.getPosition();
+  chatWin.setBounds({ x, y, width: Math.max(300, Math.round(w)), height: Math.max(400, Math.round(h)) });
+});
+ipcMain.handle('chat:get-size', () => (chatWin ? chatWin.getSize() : [0, 0]));

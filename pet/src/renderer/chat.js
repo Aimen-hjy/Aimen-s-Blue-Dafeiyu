@@ -1,4 +1,4 @@
-// 大肥鱼对话窗：文字聊天（DeepSeek）+ 截屏提问（视觉问答）+ 启动完整 DSH
+// 大肥鱼对话窗：文字聊天走 DSH（会话连续）+ 截屏提问（视觉问答）+ 启动完整 DSH
 const messagesEl = document.getElementById('messages');
 const inputEl = document.getElementById('input');
 const sendBtn = document.getElementById('send');
@@ -7,9 +7,11 @@ const openDshBtn = document.getElementById('open-dsh');
 const closeBtn = document.getElementById('close');
 const hintEl = document.getElementById('hint');
 
-let history = []; // OpenAI 兼容 [{ role, content }]
+let sessionId = null; // DSH 会话 id，续聊用
 let pendingImage = null; // 截屏后待发送的 data URL
 let busy = false;
+let streamingEl = null; // 正在流式输出的气泡
+let streamText = '';
 
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({
@@ -33,6 +35,15 @@ function addBubble(role, text, imageUrl) {
   return div;
 }
 
+function addStreamingBubble() {
+  const div = document.createElement('div');
+  div.className = 'msg bot';
+  div.textContent = '…';
+  messagesEl.appendChild(div);
+  scrollBottom();
+  return div;
+}
+
 function setHint(text) {
   if (!text) {
     hintEl.classList.remove('on');
@@ -46,53 +57,68 @@ function setHint(text) {
 async function send() {
   if (busy) return;
   const q = inputEl.value.trim();
-  const hasImage = !!pendingImage;
-  if (!hasImage && !q) return;
+  const img = pendingImage;
+  if (!img && !q) return;
 
-  const question = hasImage ? (q || '请描述这张屏幕截图，说说上面有什么、重点信息是什么。') : q;
-  const content = hasImage
-    ? [
-        { type: 'image_url', image_url: { url: pendingImage } },
-        { type: 'text', text: question },
-      ]
-    : question;
-
-  history.push({ role: 'user', content });
-  addBubble('user', question, hasImage ? pendingImage : null);
+  const question = img ? (q || '请描述这张屏幕截图，说说上面有什么、重点信息是什么。') : q;
+  addBubble('user', question, img);
   pendingImage = null;
   inputEl.value = '';
   setHint('');
   busy = true;
   sendBtn.disabled = true;
 
-  const status = document.createElement('div');
-  status.className = 'msg bot';
-  status.style.color = '#9ca3af';
-  status.textContent = '大肥鱼思考中…';
-  messagesEl.appendChild(status);
-  scrollBottom();
-
-  try {
-    const res = await window.petAPI.chatSend(history);
-    if (res && res.ok && res.text) {
-      history.push({ role: 'assistant', content: res.text });
-      addBubble('bot', res.text);
-    } else {
-      addBubble('bot', '（出错了：' + ((res && res.error) || '未知错误') + '）');
+  if (img) {
+    // 截图：直连 deepseek-flash 视觉问答（DSH CLI 不吃图片）
+    streamingEl = addStreamingBubble();
+    streamingEl.textContent = '大肥鱼在看屏幕…';
+    try {
+      const res = await window.petAPI.chatAskImage(img, question);
+      if (res && res.ok && res.text) streamingEl.textContent = res.text;
+      else streamingEl.textContent = '（出错了：' + ((res && res.error) || '未知错误') + '）';
+    } catch (e) {
+      streamingEl.textContent = '（调用失败：' + String(e) + '）';
+    } finally {
+      streamingEl = null;
+      busy = false;
+      sendBtn.disabled = false;
+      inputEl.focus();
     }
-  } catch (e) {
-    addBubble('bot', '（调用失败：' + String(e) + '）');
-  } finally {
-    status.remove();
-    busy = false;
-    sendBtn.disabled = false;
-    inputEl.focus();
+  } else {
+    // 文字聊天：走 DSH（session 连续），流式回显
+    streamText = '';
+    streamingEl = addStreamingBubble();
+    window.petAPI.chatSend(question, sessionId);
   }
 }
 
 sendBtn.addEventListener('click', send);
 inputEl.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') send();
+});
+
+window.petAPI.onChatToken((t) => {
+  streamText += t;
+  if (streamingEl) {
+    streamingEl.textContent = streamText;
+    scrollBottom();
+  }
+});
+
+window.petAPI.onChatDone((d) => {
+  if (streamingEl) {
+    if (d && d.ok) {
+      if (d.sessionId) sessionId = d.sessionId;
+      if (!streamText && d.text) streamingEl.textContent = d.text;
+    } else {
+      streamingEl.textContent = '（出错了：' + ((d && d.error) || '未知错误') + '）';
+    }
+    streamingEl = null;
+    streamText = '';
+  }
+  busy = false;
+  sendBtn.disabled = false;
+  inputEl.focus();
 });
 
 shotBtn.addEventListener('click', async () => {
@@ -155,9 +181,33 @@ window.addEventListener('mouseup', () => {
   dragging = false;
 });
 
+// —— 右下角把手拖动缩放对话窗 ——
+const grip = document.getElementById('grip');
+let resizing = false;
+grip.addEventListener('mousedown', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  resizing = true;
+  const sx = e.screenX;
+  const sy = e.screenY;
+  window.petAPI.getChatSize().then(([w0, h0]) => {
+    const move = (ev) => {
+      if (!resizing) return;
+      window.petAPI.resizeChat(w0 + (ev.screenX - sx), h0 + (ev.screenY - sy));
+    };
+    const up = () => {
+      resizing = false;
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  });
+});
+
 // 首次打开：欢迎语
 if (!localStorage.getItem('chat-greeted')) {
   localStorage.setItem('chat-greeted', '1');
-  addBubble('bot', '你好呀，我是大肥鱼 🐟 有什么想问的？点「📸 截屏」我可以看看你屏幕上的内容哦。');
+  addBubble('bot', '你好呀，我是大肥鱼 🐟 这里直接连着你的 DSH，可以直接聊天；点「📸 截屏」我能看看你屏幕上的内容。');
 }
 inputEl.focus();

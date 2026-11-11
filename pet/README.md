@@ -17,11 +17,12 @@ npm start
 ## 交互
 
 - **待机**：循环播放「待机呼吸休闲」（透明 webm）
-- **单击**：随机播放一个「点击回应」动画（5 选 1）+ 随机气泡，并打开对话窗（和 DSH 聊天 / 截屏提问）
+- **单击**：随机播放一个「点击回应」动画（5 选 1）+ 随机气泡，并只打开对话窗（自动关掉状态面板，保证只出现一个窗口）
+- **右键**：弹出菜单，选择打开「状态面板」或「对话」
 - **拖拽**：跟随鼠标移动，鱼随方向轻微倾斜（保持待机画面，不改变大小）
-- **右键 / 双击**：打开状态面板（今日课程 + Canvas 任务 + DeepSeek 余额 / 当日消费金额）
-- **状态面板**：拖动标题栏可移动；拖动鱼时面板保持相对位置跟随；点 × 或再次右键/双击关闭
-- **对话窗**：和 DeepSeek 文字聊天（`deepseek-flash`）；点「📸 截屏」截取当前屏幕并针对屏幕提问（视觉问答）；点「🚀 DSH」启动完整 DSH Web UI（`http://127.0.0.1:3080`）
+- **状态面板**：今日课程 + Canvas 任务 + DeepSeek 余额 / 当日消费金额；拖动标题栏移动，拖动鱼时面板保持相对位置跟随，点 × 关闭
+- **对话窗**：文字聊天走 **DSH**（headless 模式，会话连续）；点「📸 截屏」截取当前屏幕并针对屏幕提问（视觉问答，走 `deepseek-flash`）；点「🚀 DSH」启动完整 DSH Web UI（`http://127.0.0.1:3080`）
+- **窗口缩放**：状态面板 / 对话窗右下角有把手，拖动即可缩放（面板内容可滚轮滚动，右侧不显示滑动条）
 
 ## 数据来源
 
@@ -29,7 +30,8 @@ npm start
 - **Canvas 任务**：读取 `~/.campus-agent/state.json` 的 `canvas` 缓存，列出截止时间最近的作业（需先在 campus-agent 中 `refresh_canvas_courses` + `refresh_canvas_course` 同步）
 - **DeepSeek 余额**：读取 `~/.dsh/.credentials.yaml` 的 `DEEPSEEK_API_KEY`，调 `api.deepseek.com/user/balance`
 - **当日消费金额**：读取 `pet/src/config.json` 的 `deepseekUserToken`（平台登录态，见下），调 `platform.deepseek.com/api/v0/usage/cost` 按天累加今日各模型/各计费项金额
-- **对话 / 截屏提问**：读取 `~/.dsh/.credentials.yaml` 的 `DEEPSEEK_API_KEY`，调 `api.deepseek.com/chat/completions`（模型 `deepseek-flash`，同时支持文字与图片输入）；截屏由 Electron `desktopCapturer` 抓取主显示器画面
+- **对话（DSH）**：文字聊天通过 `npx @deepseek-ai/dsh --profile headless --json` 走真实 DSH 会话（`--session-id` 续聊），API Key 读 `~/.dsh/.credentials.yaml` 并通过 `DEEPSEEK_API_KEY` 环境变量注入
+- **截屏提问**：Electron `desktopCapturer` 抓主显示器画面 → 直连 `api.deepseek.com/chat/completions`（模型 `deepseek-flash`，支持图片输入）
 
 > `deepseekUserToken` 是浏览器登录 `platform.deepseek.com` 后 localStorage 里的 `userToken`（形如 `{"value":"...","__version":"0"}`，取其中 `value`）。公开 API 只有余额，没有逐日金额；该接口是平台私密接口，token 过期后需重新到浏览器里取一次。已存入 `pet/src/config.json`（gitignore，纯本地）。
 

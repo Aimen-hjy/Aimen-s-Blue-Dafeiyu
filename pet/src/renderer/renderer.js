@@ -18,7 +18,7 @@ const PHRASES = [
   '今天也要加油哦',
   '我饿了 🐟',
   '点我可以聊天 / 截屏提问 📸',
-  '右击 / 双击看状态',
+  '右击我选状态 / 对话',
 ];
 
 let dragging = false;
@@ -98,17 +98,14 @@ window.addEventListener('mouseup', () => {
   if (!moved) {
     playClick();
     showBubble(PHRASES[Math.floor(Math.random() * PHRASES.length)]);
+    window.petAPI.closePanel();
     window.petAPI.toggleChat();
   }
 });
 
 video.addEventListener('contextmenu', (e) => {
   e.preventDefault();
-  window.petAPI.togglePanel();
-});
-
-video.addEventListener('dblclick', () => {
-  window.petAPI.togglePanel();
+  window.petAPI.showContextMenu();
 });
 
 function showBubble(text) {

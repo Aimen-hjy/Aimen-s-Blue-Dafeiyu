@@ -7,7 +7,7 @@
 1. **待机动作**：循环播放「待机呼吸休闲」透明 webm；**互动独立动作**：单击随机「点击回应」（5 选 1）、拖拽倾斜跟随（保持待机画面，不换片段）。
 2. **校园信息**：读 `~/.campus-agent/state.json`，今日课程只显示课程名 / 地点 / 具体时间（按 SJTU 节次表换算），并列出最近 Canvas 作业。
 3. **DeepSeek 平台数据**：显示余额（`api.deepseek.com/user/balance`）+ 当日消费金额（平台私密接口 `platform.deepseek.com/api/v0/usage/cost`，需登录态 `userToken`）。
-4. **对话 / 截屏提问**：单击鱼打开对话窗——和 DeepSeek（`deepseek-flash`）文字聊天；`📸 截屏` 抓当前屏幕做视觉问答；`🚀 DSH` 启动完整 DSH Web UI。
+4. **对话 / 截屏提问**：单击鱼打开对话窗——文字聊天走真实 DSH（headless 会话连续）；`📸 截屏` 抓当前屏幕做视觉问答（`deepseek-flash`）；`🚀 DSH` 启动完整 DSH Web UI。
 
 ## 动画方案
 
@@ -56,7 +56,7 @@ pet/
 - [x] 动画升级为 dsh-pet 透明 webm 片段（待机 + 点击回应；拖拽改用倾斜跟随，避免换片“变大”）
 - [x] 状态面板可拖动标题栏移动；拖动鱼时面板按相对偏移跟随（`pet:move` 同步移动面板）
 - [x] DeepSeek 当日消费金额（balance 接口只有余额；平台私密接口 `usage/cost` + 浏览器登录态 `userToken` 按天累加今日金额）
-- [x] 单击鱼打开对话窗：和 DeepSeek 文字聊天（`deepseek-flash`）+ 截屏视觉问答（`desktopCapturer` 抓屏 + 图片输入）+ 一键启动完整 DSH Web UI
+- [x] 单击鱼打开对话窗：文字聊天走 DSH（headless + `--session-id` 续聊）+ 截屏视觉问答（`desktopCapturer` 抓屏 + `deepseek-flash` 图片输入）+ 一键启动完整 DSH Web UI；右键弹菜单选状态/对话；面板/对话窗右下角把手缩放
 - [ ] 校园信息提醒（上课前/作业截止前气泡）
 - [ ] 可选扩展：接入更多 dsh-pet 片段（睡觉三段接力、余额分档、工作状态、随机小动作）
 - [ ] MiniMax key（已本地保存未入库）：后续可用 `image-01` 生成额外表情/姿态帧
