@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, screen } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
+const { execFileSync } = require('node:child_process');
 
 let petWin = null;
 let panelWin = null;
@@ -59,6 +60,70 @@ async function fetchDeepSeekBalance() {
   }
 }
 
+/** 递归列出目录下所有 session JSONL(zstd) 日志文件。 */
+function listZstdLogs(dir) {
+  let out = [];
+  let entries;
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const e of entries) {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) out = out.concat(listZstdLogs(p));
+    else if (e.isFile() && e.name.endsWith('.jsonl.zstd')) out.push(p);
+  }
+  return out;
+}
+
+/** 解压 zstd 文本；文件被截断（活跃会话写入中）时仍返回已解码的完整帧。 */
+function zstdDecompressText(file) {
+  try {
+    return execFileSync('zstd', ['-d', '-c', file], {
+      encoding: 'utf8',
+      maxBuffer: 64 * 1024 * 1024,
+    });
+  } catch (e) {
+    return e && e.stdout ? e.stdout : null;
+  }
+}
+
+/**
+ * 计算「当日 token 消耗」（上海时区）：遍历 DSH 会话日志里 assistant/message
+ * 事件的 data.usage（每条的 inputTokens/outputTokens 为增量），累计今天产生的
+ * 输入/输出 token。balance 接口没有逐日用量，只能从这里算。
+ */
+function todayTokenUsage() {
+  const sessionsRoot = path.join(os.homedir(), '.dsh', 'sessions');
+  // 今天 0 点（上海 UTC+8）对应的 UTC 毫秒时间戳
+  const nowSh = new Date(Date.now() + 8 * 3600000);
+  const todayMidUtc =
+    Date.UTC(nowSh.getUTCFullYear(), nowSh.getUTCMonth(), nowSh.getUTCDate()) - 8 * 3600000;
+
+  let input = 0;
+  let output = 0;
+  for (const f of listZstdLogs(sessionsRoot)) {
+    const text = zstdDecompressText(f);
+    if (!text) continue;
+    for (const line of text.split('\n')) {
+      if (line.indexOf('assistant/message') < 0) continue;
+      let o;
+      try {
+        o = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      const t = o.time;
+      const usage = (o.data && o.data.usage) || null;
+      if (!usage || typeof t !== 'number' || t < todayMidUtc) continue;
+      input += usage.inputTokens || 0;
+      output += usage.outputTokens || 0;
+    }
+  }
+  return { input, output, total: input + output };
+}
+
 /** 计算「今天上海时区」的课程列表（只读本地缓存，不做网络请求）。 */
 function todayClasses(lessons, semesterStart) {
   if (!semesterStart || !Array.isArray(lessons)) return [];
@@ -107,7 +172,7 @@ function readCampusInfo() {
 
 async function getInfo() {
   const [deepseek, campus] = await Promise.all([fetchDeepSeekBalance(), readCampusInfo()]);
-  return { deepseek, campus, now: new Date().toISOString() };
+  return { deepseek, todayTokens: todayTokenUsage(), campus, now: new Date().toISOString() };
 }
 
 function createPetWindow() {

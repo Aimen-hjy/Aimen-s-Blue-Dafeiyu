@@ -18,13 +18,19 @@ function render(info) {
   }
 
   const d = info.deepseek || {};
+  const t = info.todayTokens;
+  let parts = [];
   if (!d.ok) {
-    dsEl.innerHTML = `<div class="dim">${d.error || '无数据'}</div>`;
+    parts.push(`<div class="dim">${d.error || '无数据'}</div>`);
   } else {
-    dsEl.innerHTML =
-      `<div>余额 <b>¥${d.totalBalance ?? '—'}</b>${d.currency ? ' ' + d.currency : ''}</div>` +
-      `<div class="dim">充值 ¥${d.toppedUpBalance ?? '—'} · 赠送 ¥${d.grantedBalance ?? '—'}</div>`;
+    parts.push(`<div>余额 <b>¥${d.totalBalance ?? '—'}</b>${d.currency ? ' ' + d.currency : ''}</div>`);
   }
+  if (t && typeof t.total === 'number') {
+    parts.push(`<div>当日 token 消耗 <b>${t.total.toLocaleString()}</b></div>`);
+  } else {
+    parts.push(`<div class="dim">当日 token 消耗 —</div>`);
+  }
+  dsEl.innerHTML = parts.join('');
 }
 
 async function refresh() {
