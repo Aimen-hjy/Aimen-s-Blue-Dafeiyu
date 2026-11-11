@@ -1,10 +1,12 @@
-const { app, BrowserWindow, ipcMain, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, desktopCapturer, shell } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
+const { spawn } = require('node:child_process');
 
 let petWin = null;
 let panelWin = null;
+let chatWin = null;
 
 // 桌宠窗口尺寸（16:9，与 640×360 素材等比）。用常量锁死，
 // 避免高 DPI（如 150%）下 setPosition 的 DIP 舍入累积把窗口撑宽。
@@ -12,6 +14,10 @@ const PET_WIDTH = 400;
 const PET_HEIGHT = 225;
 const PANEL_WIDTH = 340;
 const PANEL_HEIGHT = 460;
+const CHAT_WIDTH = 360;
+const CHAT_HEIGHT = 520;
+const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-flash';
+const DSH_COMMAND = process.env.DSH_COMMAND || 'npx --yes @deepseek-ai/dsh web';
 
 // 面板相对鱼窗口的偏移；鱼被拖动时面板按此偏移跟随，保持相对位置
 let panelOffset = null;
@@ -224,6 +230,70 @@ async function getInfo() {
   return { deepseek, todayCost, campus, canvas, now: new Date().toISOString() };
 }
 
+/** 大肥鱼对话系统提示词（主进程统一注入，渲染层历史只存 user/assistant）。 */
+const CHAT_SYSTEM_PROMPT =
+  '你是「大肥鱼」，一只蓝色胖鱼桌面宠物（DeepSeek 拟人形象）。用中文、简短、活泼、口语化地聊天，像朋友一样。';
+
+/** 调用 DeepSeek 对话接口（deepseek-flash 同时支持文字与图片输入）。 */
+async function callDeepSeek(messages) {
+  const key = resolveDeepSeekKey();
+  if (!key) return { ok: false, error: '未找到 DeepSeek API Key' };
+  try {
+    const res = await fetch('https://api.deepseek.com/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+      body: JSON.stringify({
+        model: DEEPSEEK_MODEL,
+        messages: [{ role: 'system', content: CHAT_SYSTEM_PROMPT }, ...messages],
+        stream: false,
+      }),
+    });
+    const body = await res.json();
+    if (!res.ok) return { ok: false, error: body?.error?.message || `HTTP ${res.status}` };
+    const text = body?.choices?.[0]?.message?.content;
+    return { ok: true, text: typeof text === 'string' ? text : '' };
+  } catch (e) {
+    return { ok: false, error: String((e && e.message) || e) };
+  }
+}
+
+/** 截取主显示器当前画面，返回 PNG data URL（供视觉问答使用）。 */
+async function captureScreen() {
+  try {
+    const d = screen.getPrimaryDisplay();
+    const scale = d.scaleFactor || 1;
+    const tw = Math.min(Math.round(d.size.width * scale), 3840);
+    const th = Math.min(Math.round(d.size.height * scale), 3840);
+    const sources = await desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize: { width: tw, height: th },
+    });
+    const primaryId = String(d.id);
+    const source = sources.find((s) => String(s.display_id) === primaryId) || sources[0];
+    if (!source || !source.thumbnail) return { ok: false, error: '未能获取屏幕画面' };
+    const png = source.thumbnail.toPNG().toString('base64');
+    return { ok: true, dataUrl: `data:image/png;base64,${png}` };
+  } catch (e) {
+    return { ok: false, error: String((e && e.message) || e) };
+  }
+}
+
+/** 启动 DSH（DeepSeek Harness）Web UI，打开 http://127.0.0.1:3080。 */
+function openDsh() {
+  try {
+    const child = spawn(DSH_COMMAND, { shell: true, detached: true, stdio: 'ignore', windowsHide: true });
+    child.on('error', () => {});
+    child.unref();
+    // 兜底：DSH 默认会自动打开浏览器，这里延时再主动开一次以防未弹出
+    setTimeout(() => {
+      shell.openExternal('http://127.0.0.1:3080').catch(() => {});
+    }, 3000);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String((e && e.message) || e) };
+  }
+}
+
 function createPetWindow() {
   petWin = new BrowserWindow({
     width: PET_WIDTH,
@@ -308,9 +378,55 @@ function togglePanel() {
   panelWin.webContents.send('panel:refresh');
 }
 
+function createChatWindow() {
+  chatWin = new BrowserWindow({
+    width: CHAT_WIDTH,
+    height: CHAT_HEIGHT,
+    show: false,
+    transparent: true,
+    backgroundColor: '#00000000',
+    frame: false,
+    resizable: false,
+    hasShadow: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  chatWin.setAlwaysOnTop(true, 'screen-saver');
+  chatWin.loadFile(path.join(__dirname, 'renderer', 'chat.html'));
+}
+
+/** 对话窗贴着鱼显示（右侧优先，放不下放左侧），底部与鱼对齐。 */
+function showChat() {
+  if (!chatWin || !petWin) return;
+  const [x, y] = petWin.getPosition();
+  const [w, h] = petWin.getSize();
+  const display = screen.getDisplayMatching({ x, y, width: w, height: h });
+  const wa = display.workArea;
+  let cx = x + w + 12;
+  let cy = y + h - CHAT_HEIGHT;
+  if (cx + CHAT_WIDTH > wa.x + wa.width) cx = x - CHAT_WIDTH - 12;
+  cx = Math.max(wa.x, Math.min(cx, wa.x + wa.width - CHAT_WIDTH));
+  cy = Math.max(wa.y, Math.min(cy, wa.y + wa.height - CHAT_HEIGHT));
+  chatWin.setBounds({ x: Math.round(cx), y: Math.round(cy), width: CHAT_WIDTH, height: CHAT_HEIGHT });
+  chatWin.show();
+  chatWin.webContents.send('chat:focus');
+}
+
+function toggleChat() {
+  if (!chatWin) return;
+  if (chatWin.isVisible()) chatWin.hide();
+  else showChat();
+}
+
 app.whenReady().then(() => {
   createPetWindow();
   createPanelWindow();
+  createChatWindow();
   console.log('[pet] 启动成功，窗口已创建');
 });
 
@@ -347,3 +463,19 @@ ipcMain.on('pet:close-panel', () => {
   if (panelWin) panelWin.hide();
 });
 ipcMain.handle('pet:get-info', () => getInfo());
+
+// —— 大肥鱼对话 / 截屏提问 ——
+ipcMain.on('pet:toggle-chat', () => toggleChat());
+ipcMain.on('chat:close', () => {
+  if (chatWin) chatWin.hide();
+});
+ipcMain.handle('chat:get-position', () => (chatWin ? chatWin.getPosition() : [0, 0]));
+ipcMain.on('chat:move', (_e, x, y) => {
+  if (chatWin) chatWin.setBounds({ x: Math.round(x), y: Math.round(y), width: CHAT_WIDTH, height: CHAT_HEIGHT });
+});
+ipcMain.handle('chat:send', (_e, messages) => {
+  if (!Array.isArray(messages)) return { ok: false, error: '消息格式错误' };
+  return callDeepSeek(messages);
+});
+ipcMain.handle('chat:screenshot', () => captureScreen());
+ipcMain.handle('chat:open-dsh', () => openDsh());

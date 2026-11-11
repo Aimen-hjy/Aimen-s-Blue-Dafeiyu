@@ -17,8 +17,8 @@ const PHRASES = [
   '你好呀！',
   '今天也要加油哦',
   '我饿了 🐟',
-  '右击我 / 双击看状态',
-  '拖我可以搬家哦',
+  '点我可以聊天 / 截屏提问 📸',
+  '右击 / 双击看状态',
 ];
 
 let dragging = false;
@@ -98,6 +98,7 @@ window.addEventListener('mouseup', () => {
   if (!moved) {
     playClick();
     showBubble(PHRASES[Math.floor(Math.random() * PHRASES.length)]);
+    window.petAPI.toggleChat();
   }
 });
 
