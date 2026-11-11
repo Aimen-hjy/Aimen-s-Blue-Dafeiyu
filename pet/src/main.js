@@ -230,11 +230,7 @@ async function getInfo() {
   return { deepseek, todayCost, campus, canvas, now: new Date().toISOString() };
 }
 
-/** 大肥鱼对话系统提示词（主进程统一注入，渲染层历史只存 user/assistant）。 */
-const CHAT_SYSTEM_PROMPT =
-  '你是「大肥鱼」，一只蓝色胖鱼桌面宠物（DeepSeek 拟人形象）。用中文、简短、活泼、口语化地聊天，像朋友一样。';
-
-/** 调用 DeepSeek 对话接口（deepseek-flash 同时支持文字与图片输入）。 */
+/** 调用 DeepSeek 对话接口（deepseek-flash 同时支持文字与图片输入，不加人设）。 */
 async function callDeepSeek(messages) {
   const key = resolveDeepSeekKey();
   if (!key) return { ok: false, error: '未找到 DeepSeek API Key' };
@@ -244,7 +240,7 @@ async function callDeepSeek(messages) {
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
       body: JSON.stringify({
         model: DEEPSEEK_MODEL,
-        messages: [{ role: 'system', content: CHAT_SYSTEM_PROMPT }, ...messages],
+        messages,
         stream: false,
       }),
     });

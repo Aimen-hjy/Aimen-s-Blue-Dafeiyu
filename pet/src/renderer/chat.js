@@ -208,6 +208,6 @@ grip.addEventListener('mousedown', (e) => {
 // 首次打开：欢迎语
 if (!localStorage.getItem('chat-greeted')) {
   localStorage.setItem('chat-greeted', '1');
-  addBubble('bot', '你好呀，我是大肥鱼 🐟 这里直接连着你的 DSH，可以直接聊天；点「📸 截屏」我能看看你屏幕上的内容。');
+  addBubble('bot', '这里直接连着你的 DSH，直接聊就行；点「📸 截屏」可以针对屏幕内容提问。');
 }
 inputEl.focus();
