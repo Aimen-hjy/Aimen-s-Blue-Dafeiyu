@@ -165,16 +165,26 @@ function togglePanel() {
   if (!panelWin || !petWin) return;
   if (panelWin.isVisible()) {
     panelWin.hide();
-    panelOffset = null;
-    return;
+    return; // 不重置 panelOffset，记住上次拖动的位置，下次打开沿用
   }
   const [x, y] = petWin.getPosition();
   const [w, h] = petWin.getSize();
   const display = screen.getDisplayMatching({ x, y, width: w, height: h });
   const wa = display.workArea;
-  let px = x + w + 12;
-  let py = y;
-  if (px + PANEL_WIDTH > wa.x + wa.width) px = x - PANEL_WIDTH - 12;
+  let px;
+  let py;
+  if (panelOffset) {
+    // 沿用上次拖动记住的相对位置（相对鱼当前坐标）
+    px = x + panelOffset.dx;
+    py = y + panelOffset.dy;
+  } else {
+    // 首次打开：默认放鱼右侧，放不下放左侧
+    px = x + w + 12;
+    py = y;
+    if (px + PANEL_WIDTH > wa.x + wa.width) px = x - PANEL_WIDTH - 12;
+  }
+  // 夹紧到工作区（鱼移动后记住的偏移若越界，拉回可视区）
+  px = Math.max(wa.x, Math.min(px, wa.x + wa.width - PANEL_WIDTH));
   py = Math.max(wa.y, Math.min(py, wa.y + wa.height - PANEL_HEIGHT));
   px = Math.round(px);
   py = Math.round(py);
