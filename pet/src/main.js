@@ -90,9 +90,10 @@ function zstdDecompressText(file) {
 }
 
 /**
- * 计算「当日 token 消耗」（上海时区）：遍历 DSH 会话日志里 assistant/message
- * 事件的 data.usage（每条的 inputTokens/outputTokens 为增量），累计今天产生的
- * 输入/输出 token。balance 接口没有逐日用量，只能从这里算。
+ * 计算「当日 token 消耗」（上海时区）：即 DeepSeek 账号在 API 上产生的完整 token
+ * 用量 = 输入（缓存未命中 inputTokens + 缓存命中 cacheReadTokens + 缓存写入
+ * cacheWriteTokens）+ 输出 outputTokens。balance 接口没有逐日用量，只能从 DSH
+ * 会话日志里 assistant/message 事件的 data.usage（每条为增量）累计。
  */
 function todayTokenUsage() {
   const sessionsRoot = path.join(os.homedir(), '.dsh', 'sessions');
@@ -103,6 +104,7 @@ function todayTokenUsage() {
 
   let input = 0;
   let output = 0;
+  let cache = 0;
   for (const f of listZstdLogs(sessionsRoot)) {
     const text = zstdDecompressText(f);
     if (!text) continue;
@@ -119,9 +121,10 @@ function todayTokenUsage() {
       if (!usage || typeof t !== 'number' || t < todayMidUtc) continue;
       input += usage.inputTokens || 0;
       output += usage.outputTokens || 0;
+      cache += (usage.cacheReadTokens || 0) + (usage.cacheWriteTokens || 0);
     }
   }
-  return { input, output, total: input + output };
+  return { input, output, cache, total: input + output + cache };
 }
 
 /** 计算「今天上海时区」的课程列表（只读本地缓存，不做网络请求）。 */

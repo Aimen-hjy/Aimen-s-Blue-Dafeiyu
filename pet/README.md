@@ -26,7 +26,7 @@ npm start
 
 - **校园信息**：读取 `~/.campus-agent/state.json`（需先 `campus-agent sync_timetable` 同步课表）
 - **DeepSeek 余额**：读取 `~/.dsh/.credentials.yaml` 的 `DEEPSEEK_API_KEY`，调 `api.deepseek.com/user/balance`
-- **当日 token 消耗**：读取 `~/.dsh/sessions/*/session-*/session.v4.jsonl.zstd`（zstd 解压后统计当天 `assistant/message` 事件的 `data.usage` 输入/输出 token）
+- **当日 token 消耗**：DeepSeek 账号的 API 完整 token 用量（输入含缓存命中/未命中 + 输出），读取 `~/.dsh/sessions/*/session-*/session.v4.jsonl.zstd` 统计当天 `assistant/message` 事件的 `data.usage`
 
 ## 素材
 
