@@ -6,6 +6,11 @@ const os = require('node:os');
 let petWin = null;
 let panelWin = null;
 
+// 桌宠窗口尺寸（16:9，与 640×360 素材等比）。用常量锁死，
+// 避免高 DPI（如 150%）下 setPosition 的 DIP 舍入累积把窗口撑宽。
+const PET_WIDTH = 400;
+const PET_HEIGHT = 225;
+
 /** 从 env / dsh 凭据 / pet config 依次解析 DeepSeek API Key（本地秘密，绝不外发）。 */
 function resolveDeepSeekKey() {
   if (process.env.DEEPSEEK_API_KEY) return process.env.DEEPSEEK_API_KEY.trim();
@@ -102,8 +107,8 @@ async function getInfo() {
 
 function createPetWindow() {
   petWin = new BrowserWindow({
-    width: 400,
-    height: 225,
+    width: PET_WIDTH,
+    height: PET_HEIGHT,
     transparent: true,
     backgroundColor: '#00000000',
     frame: false,
@@ -120,7 +125,12 @@ function createPetWindow() {
   petWin.setAlwaysOnTop(true, 'screen-saver');
   // 初始放到主屏工作区右下角
   const wa = screen.getPrimaryDisplay().workArea;
-  petWin.setPosition(wa.x + wa.width - 400 - 24, wa.y + wa.height - 225 - 24);
+  petWin.setBounds({
+    x: wa.x + wa.width - PET_WIDTH - 24,
+    y: wa.y + wa.height - PET_HEIGHT - 24,
+    width: PET_WIDTH,
+    height: PET_HEIGHT,
+  });
   petWin.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 }
 
@@ -183,7 +193,8 @@ app.on('window-all-closed', () => app.quit());
 
 ipcMain.handle('pet:get-position', () => (petWin ? petWin.getPosition() : [0, 0]));
 ipcMain.on('pet:move', (_e, x, y) => {
-  if (petWin) petWin.setPosition(Math.round(x), Math.round(y));
+  // 用 setBounds 显式锁定宽高：高 DPI 下 setPosition 会因 DIP 舍入累积把窗口撑宽
+  if (petWin) petWin.setBounds({ x: Math.round(x), y: Math.round(y), width: PET_WIDTH, height: PET_HEIGHT });
 });
 ipcMain.on('pet:toggle-panel', () => togglePanel());
 ipcMain.on('pet:close-panel', () => {
