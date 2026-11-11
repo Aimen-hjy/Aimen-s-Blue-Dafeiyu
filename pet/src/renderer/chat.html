@@ -78,6 +78,58 @@
       #hint.on {
         display: block;
       }
+      #history-panel {
+        position: absolute;
+        top: 42px;
+        left: 8px;
+        right: 8px;
+        max-height: 62%;
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+        overflow-y: auto;
+        z-index: 30;
+        display: none;
+      }
+      #history-panel.on {
+        display: block;
+      }
+      #history-panel::-webkit-scrollbar {
+        display: none;
+      }
+      .hitem {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        padding: 8px 12px;
+        cursor: pointer;
+        border-bottom: 1px solid #f3f4f6;
+      }
+      .hitem:hover {
+        background: #eff6ff;
+      }
+      .hitem:last-child {
+        border-bottom: none;
+      }
+      .hitem.current .htitle {
+        color: #2563eb;
+        font-weight: 600;
+      }
+      .htitle {
+        font-size: 13px;
+        color: #1f2937;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .hmeta {
+        font-size: 11px;
+        color: #9ca3af;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
       #messages {
         flex: 1;
         overflow-y: auto;
@@ -172,11 +224,14 @@
       <div id="header">
         <span class="title">大肥鱼 · 和 DSH 聊天</span>
         <div class="actions">
+          <button id="history" title="查看历史对话">🕘 历史</button>
+          <button id="new-chat" title="新建对话">＋</button>
           <button id="open-dsh" title="打开完整 DSH Web UI">🚀 DSH</button>
           <button id="shot" title="截屏当前屏幕并提问">📸 截屏</button>
           <button id="close" title="关闭">×</button>
         </div>
       </div>
+      <div id="history-panel"></div>
       <div id="hint"></div>
       <div id="messages"></div>
       <div id="input-row">

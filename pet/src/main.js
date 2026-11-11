@@ -1,8 +1,8 @@
-const { app, BrowserWindow, ipcMain, screen, desktopCapturer, shell, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, desktopCapturer, shell, Menu, net } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
-const { spawn } = require('node:child_process');
+const { spawn, spawnSync } = require('node:child_process');
 
 let petWin = null;
 let panelWin = null;
@@ -46,7 +46,7 @@ async function fetchDeepSeekBalance() {
   const key = resolveDeepSeekKey();
   if (!key) return { ok: false, error: '未找到 DeepSeek API Key' };
   try {
-    const res = await fetch('https://api.deepseek.com/user/balance', {
+    const res = await net.fetch('https://api.deepseek.com/user/balance', {
       headers: { Authorization: `Bearer ${key}` },
     });
     if (!res.ok) return { ok: false, error: `balance 接口 HTTP ${res.status}` };
@@ -99,7 +99,7 @@ async function fetchTodayCost() {
   const today =
     `${year}-${String(month).padStart(2, '0')}-${String(nowSh.getUTCDate()).padStart(2, '0')}`;
   try {
-    const res = await fetch(
+    const res = await net.fetch(
       `https://platform.deepseek.com/api/v0/usage/cost?month=${month}&year=${year}`,
       {
         headers: {
@@ -235,7 +235,7 @@ async function callDeepSeek(messages) {
   const key = resolveDeepSeekKey();
   if (!key) return { ok: false, error: '未找到 DeepSeek API Key' };
   try {
-    const res = await fetch('https://api.deepseek.com/chat/completions', {
+    const res = await net.fetch('https://api.deepseek.com/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
       body: JSON.stringify({
@@ -359,6 +359,176 @@ function runDshChat(text, sessionId, onToken, onDone) {
   });
   child.stdin.write(text);
   child.stdin.end();
+}
+
+// —— DSH 会话历史：扫描 ~/.dsh/sessions，解压 session.v4.jsonl.zstd 取标题/时间/消息 ——
+
+let _zstdBin = null;
+let _zstdResolved = false;
+
+/** 定位 zstd 解压工具（会话文件是 zstd 压缩的 JSONL）。 */
+function resolveZstdBin() {
+  if (_zstdResolved) return _zstdBin;
+  _zstdResolved = true;
+  const candidates = [
+    'zstd',
+    path.join('D:', 'software', 'anaconda', 'Library', 'bin', 'zstd.exe'),
+    path.join(process.env.ProgramData || 'C:\\ProgramData', 'anaconda3', 'Library', 'bin', 'zstd.exe'),
+    path.join(process.env.LOCALAPPDATA || '', 'Continuum', 'anaconda3', 'Library', 'bin', 'zstd.exe'),
+  ];
+  for (const c of candidates) {
+    try {
+      const r = spawnSync(c, ['--version'], { windowsHide: true, stdio: 'ignore' });
+      if (r.status === 0) {
+        _zstdBin = c;
+        return c;
+      }
+    } catch {}
+  }
+  return null;
+}
+
+/** 把会话目录名还原成工作区路径（DSH 用 `--` 包住、`:`/`\` 换成 `-`）。 */
+function decodeWsDir(name) {
+  let s = String(name || '');
+  if (s.startsWith('--')) s = s.slice(2);
+  if (s.endsWith('--')) s = s.slice(0, -2);
+  if (/^[A-Za-z]-/.test(s)) s = s[0] + ':' + s.slice(2).replace(/-/g, '\\');
+  else s = s.replace(/-/g, '\\');
+  return s;
+}
+
+/** 解压会话文件为文本；缺少 zstd 或解压失败时返回 null。 */
+function readSessionText(file) {
+  const zstd = resolveZstdBin();
+  if (!zstd) return null;
+  try {
+    const r = spawnSync(zstd, ['-dc', file], {
+      windowsHide: true,
+      encoding: 'utf8',
+      maxBuffer: 64 * 1024 * 1024,
+    });
+    if (r.status !== 0) return null;
+    return r.stdout || '';
+  } catch {
+    return null;
+  }
+}
+
+/** 从消息 content 数组里拼接纯文本（跳过 reasoning/tool 等非 text 块）。 */
+function textOfContent(content) {
+  if (!Array.isArray(content)) return '';
+  return content
+    .filter((c) => c && c.type === 'text' && typeof c.text === 'string')
+    .map((c) => c.text)
+    .join('')
+    .trim();
+}
+
+/** 枚举历史会话（标题 + 最近活动时间 + 工作区路径），最近的在前面。 */
+function listDshSessions() {
+  const root = path.join(os.homedir(), '.dsh', 'sessions');
+  let wsDirs = [];
+  try {
+    wsDirs = fs.readdirSync(root, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name);
+  } catch {
+    return { ok: false, error: '未找到 DSH 会话目录', sessions: [] };
+  }
+  const out = [];
+  for (const ws of wsDirs) {
+    const wsPath = path.join(root, ws);
+    let sDirs = [];
+    try {
+      sDirs = fs.readdirSync(wsPath, { withFileTypes: true }).filter((d) => d.isDirectory());
+    } catch {
+      continue;
+    }
+    for (const sd of sDirs) {
+      const id = sd.name;
+      const file = path.join(wsPath, id, 'session.v4.jsonl.zstd');
+      let stat = null;
+      try {
+        stat = fs.statSync(file);
+      } catch {
+        continue;
+      }
+      let title = null;
+      let createdAt = stat.mtimeMs;
+      let cwd = decodeWsDir(ws);
+      const text = readSessionText(file);
+      if (text) {
+        for (const line of text.split('\n')) {
+          if (!line) continue;
+          let ev;
+          try { ev = JSON.parse(line); } catch { continue; }
+          if (ev.type === 'session') {
+            if (ev.createdAt) createdAt = ev.createdAt;
+            if (ev.cwd) cwd = ev.cwd;
+          } else if (ev.type === 'session/title' && ev.data && ev.data.title) {
+            title = String(ev.data.title);
+          }
+        }
+      }
+      out.push({
+        sessionId: id,
+        title: title ? title.slice(0, 80) : '会话 ' + id.slice(8, 16),
+        updatedAt: stat.mtimeMs,
+        createdAt: createdAt || null,
+        cwd: cwd || '',
+      });
+    }
+  }
+  out.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  return { ok: true, sessions: out };
+}
+
+/** 读取指定会话的「干净」对话（真实用户提问 + 助手回答），供回填历史。 */
+function loadDshSession(sessionId) {
+  if (typeof sessionId !== 'string' || !sessionId) {
+    return { ok: false, error: '缺少 sessionId', messages: [] };
+  }
+  const root = path.join(os.homedir(), '.dsh', 'sessions');
+  let wsDirs = [];
+  try {
+    wsDirs = fs.readdirSync(root, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name);
+  } catch {
+    return { ok: false, error: '未找到 DSH 会话目录', messages: [] };
+  }
+  let file = null;
+  for (const ws of wsDirs) {
+    const f = path.join(root, ws, sessionId, 'session.v4.jsonl.zstd');
+    if (fs.existsSync(f)) {
+      file = f;
+      break;
+    }
+  }
+  if (!file) return { ok: false, error: '会话文件不存在', messages: [] };
+  const text = readSessionText(file);
+  if (!text) return { ok: false, error: '无法解压会话文件（缺少 zstd）', messages: [] };
+  const messages = [];
+  for (const line of text.split('\n')) {
+    if (!line) continue;
+    let ev;
+    try { ev = JSON.parse(line); } catch { continue; }
+    if (ev.type === 'user/message') {
+      const d = ev.data || {};
+      if (d.source && d.source.kind === 'user') {
+        const t = textOfContent(d.content);
+        if (t) messages.push({ role: 'user', text: t.slice(0, 4000) });
+      }
+    } else if (ev.type === 'assistant/message') {
+      const m = (ev.data && ev.data.message) || ev.data;
+      if (m && m.role === 'assistant') {
+        const t = textOfContent(m.content);
+        if (t) messages.push({ role: 'assistant', text: t.slice(0, 4000) });
+      }
+    }
+  }
+  return { ok: true, messages: messages.slice(-40) };
 }
 
 function createPetWindow() {
@@ -567,6 +737,9 @@ ipcMain.handle('chat:ask-image', (_e, dataUrl, text) => {
 });
 ipcMain.handle('chat:screenshot', () => captureScreen());
 ipcMain.handle('chat:open-dsh', () => openDsh());
+// 历史对话：列出会话 / 读取某次会话的消息
+ipcMain.handle('chat:list-sessions', () => listDshSessions());
+ipcMain.handle('chat:load-session', (_e, sessionId) => loadDshSession(sessionId));
 // 右键菜单：选择打开状态面板还是对话窗
 ipcMain.on('pet:context-menu', () => {
   const menu = Menu.buildFromTemplate([

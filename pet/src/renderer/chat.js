@@ -6,12 +6,16 @@ const shotBtn = document.getElementById('shot');
 const openDshBtn = document.getElementById('open-dsh');
 const closeBtn = document.getElementById('close');
 const hintEl = document.getElementById('hint');
+const historyBtn = document.getElementById('history');
+const newChatBtn = document.getElementById('new-chat');
+const historyPanel = document.getElementById('history-panel');
 
 let sessionId = null; // DSH 会话 id，续聊用
 let pendingImage = null; // 截屏后待发送的 data URL
 let busy = false;
 let streamingEl = null; // 正在流式输出的气泡
 let streamText = '';
+let historyOpen = false; // 历史下拉是否展开
 
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({
@@ -52,6 +56,92 @@ function setHint(text) {
   }
   hintEl.textContent = text;
   hintEl.classList.add('on');
+}
+
+function fmtRelTime(ms) {
+  if (!ms) return '';
+  const diff = Date.now() - ms;
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return '刚刚';
+  if (m < 60) return m + ' 分钟前';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + ' 小时前';
+  const d = Math.floor(h / 24);
+  if (d < 7) return d + ' 天前';
+  const dt = new Date(ms);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())}`;
+}
+
+async function toggleHistory() {
+  if (!historyOpen) {
+    historyPanel.innerHTML = '<div class="hitem"><span class="hmeta">加载中…</span></div>';
+    historyPanel.classList.add('on');
+    historyOpen = true;
+    let res = null;
+    try {
+      res = await window.petAPI.listSessions();
+    } catch (e) {
+      res = { ok: false, error: String(e) };
+    }
+    if (res && res.ok && Array.isArray(res.sessions)) {
+      const items = res.sessions
+        .map((s) => {
+          const cur = s.sessionId === sessionId ? ' current' : '';
+          return `<div class="hitem${cur}" data-id="${esc(s.sessionId)}" title="${esc(s.cwd || '')}">` +
+            `<span class="htitle">${esc(s.title)}</span>` +
+            `<span class="hmeta">${esc(fmtRelTime(s.updatedAt))}</span>` +
+            '</div>';
+        })
+        .join('');
+      historyPanel.innerHTML = items || '<div class="hitem"><span class="hmeta">暂无历史对话</span></div>';
+      historyPanel.querySelectorAll('.hitem[data-id]').forEach((el) => {
+        el.addEventListener('click', () => openSession(el.dataset.id));
+      });
+    } else {
+      historyPanel.innerHTML = '<div class="hitem"><span class="hmeta">' +
+        esc((res && res.error) || '读取失败') + '</span></div>';
+    }
+  } else {
+    historyPanel.classList.remove('on');
+    historyOpen = false;
+  }
+}
+
+async function openSession(id) {
+  historyPanel.classList.remove('on');
+  historyOpen = false;
+  if (busy) return;
+  sessionId = id;
+  pendingImage = null;
+  messagesEl.innerHTML = '';
+  setHint('正在加载历史对话…');
+  let res = null;
+  try {
+    res = await window.petAPI.loadSession(id);
+  } catch (e) {
+    res = { ok: false, error: String(e) };
+  }
+  setHint('');
+  if (res && res.ok && Array.isArray(res.messages)) {
+    if (!res.messages.length) addBubble('bot', '（该会话暂无文字记录）');
+    for (const m of res.messages) addBubble(m.role === 'user' ? 'user' : 'bot', m.text);
+    addBubble('bot', '已加载历史对话，直接输入即可接着聊。');
+  } else {
+    addBubble('bot', '加载历史失败：' + ((res && res.error) || '未知错误'));
+  }
+  inputEl.focus();
+}
+
+function newChat() {
+  if (busy) return;
+  historyPanel.classList.remove('on');
+  historyOpen = false;
+  sessionId = null;
+  pendingImage = null;
+  messagesEl.innerHTML = '';
+  addBubble('bot', '已开始新对话。');
+  inputEl.focus();
 }
 
 async function send() {
@@ -95,6 +185,14 @@ async function send() {
 sendBtn.addEventListener('click', send);
 inputEl.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') send();
+});
+historyBtn.addEventListener('click', toggleHistory);
+newChatBtn.addEventListener('click', newChat);
+document.addEventListener('click', (e) => {
+  if (historyOpen && !e.target.closest('#history') && !e.target.closest('#history-panel')) {
+    historyPanel.classList.remove('on');
+    historyOpen = false;
+  }
 });
 
 window.petAPI.onChatToken((t) => {
