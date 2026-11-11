@@ -1,20 +1,48 @@
 const campusEl = document.getElementById('campus');
+const canvasEl = document.getElementById('canvas');
 const dsEl = document.getElementById('deepseek');
 const closeBtn = document.getElementById('close');
 
+function formatDue(iso) {
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return String(iso || '');
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getMonth() + 1}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 function render(info) {
+  // 今日课程：只显示课程名 / 地点 / 具体时间
   const c = info.campus || {};
   if (!c.ok) {
     campusEl.innerHTML = `<div class="dim">${c.error || '无数据'}</div>`;
+  } else if (c.today && c.today.length) {
+    campusEl.innerHTML =
+      '<ul>' +
+      c.today
+        .map((t) => `<li>${[t.course, t.room, t.time].filter(Boolean).join(' · ')}</li>`)
+        .join('') +
+      '</ul>';
   } else {
-    let html = `<div>学期 ${c.semester} · 已同步 <b>${c.lessonCount}</b> 门课</div>`;
-    if (c.semesterStart) html += `<div class="dim">开学 ${c.semesterStart}</div>`;
-    if (c.today && c.today.length) {
-      html += '<ul>' + c.today.map((t) => `<li>${t.periods} ${t.course}${t.room ? ' · ' + t.room : ''}</li>`).join('') + '</ul>';
-    } else {
-      html += '<div class="dim">今天没有课 🎉</div>';
-    }
-    campusEl.innerHTML = html;
+    campusEl.innerHTML = '<div class="dim">今天没有课 🎉</div>';
+  }
+
+  // 最近 Canvas 任务（作业，按截止时间最近的排前）
+  const cv = info.canvas;
+  if (!cv || !cv.ok) {
+    canvasEl.innerHTML = `<div class="dim">${(cv && cv.error) || '无数据'}</div>`;
+  } else if (!cv.assignments.length) {
+    canvasEl.innerHTML = '<div class="dim">暂无作业</div>';
+  } else {
+    canvasEl.innerHTML =
+      '<ul>' +
+      cv.assignments
+        .map((a) => {
+          const head = `${a.title}${a.course ? ' <span class="dim">· ' + a.course + '</span>' : ''}`;
+          const due = a.dueAt ? '截止 ' + formatDue(a.dueAt) : '无截止';
+          return `<li><div>${head}</div><div class="dim">${due}</div></li>`;
+        })
+        .join('') +
+      '</ul>';
   }
 
   const d = info.deepseek || {};
@@ -39,6 +67,7 @@ async function refresh() {
     render(info);
   } catch (e) {
     campusEl.innerHTML = `<div class="dim">读取失败</div>`;
+    canvasEl.innerHTML = `<div class="dim">读取失败</div>`;
     dsEl.innerHTML = `<div class="dim">读取失败</div>`;
   }
 }

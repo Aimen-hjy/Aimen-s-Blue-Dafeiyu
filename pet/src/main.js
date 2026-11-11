@@ -130,6 +130,25 @@ async function fetchTodayCost() {
   }
 }
 
+// 上海交大本科生节次表（分钟，自 0 点起）。第 13 节仅用于 11–13 节连上的课程。
+const CLASS_PERIODS = [
+  [480, 525], [535, 580], [600, 645], [655, 700], [720, 765],
+  [775, 820], [840, 885], [895, 940], [960, 1005], [1015, 1060],
+  [1080, 1125], [1135, 1180], [1190, 1220],
+];
+
+function fmtClock(min) {
+  return `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+}
+
+/** 由起止节次得到具体上课时间「HH:MM-HH:MM」；节次越界时回退为 null。 */
+function periodTime(startPeriod, endPeriod) {
+  const start = CLASS_PERIODS[startPeriod - 1]?.[0];
+  const end = CLASS_PERIODS[endPeriod - 1]?.[1];
+  if (start === undefined || end === undefined) return null;
+  return `${fmtClock(start)}-${fmtClock(end)}`;
+}
+
 /** 计算「今天上海时区」的课程列表（只读本地缓存，不做网络请求）。 */
 function todayClasses(lessons, semesterStart) {
   if (!semesterStart || !Array.isArray(lessons)) return [];
@@ -149,7 +168,7 @@ function todayClasses(lessons, semesterStart) {
     .map((l) => ({
       course: l.courseName,
       room: l.classroom || '',
-      periods: l.periodsText || `${l.startPeriod}-${l.endPeriod}节`,
+      time: periodTime(l.startPeriod, l.endPeriod) || l.periodsText || '',
     }));
 }
 
@@ -167,22 +186,45 @@ function readCampusInfo() {
   if (!semester) return { ok: false, error: '课表尚未同步' };
   const lessons = tt.lessons[semester] || [];
   const semesterStart = tt.sync?.[semester]?.semesterStart || null;
-  return {
-    ok: true,
-    semester,
-    lessonCount: lessons.length,
-    semesterStart,
-    today: todayClasses(lessons, semesterStart),
-  };
+  return { ok: true, today: todayClasses(lessons, semesterStart) };
+}
+
+/** 从 campus-agent 缓存读最近的 Canvas 作业（截止时间最近的排前）。 */
+function readCanvasInfo() {
+  const statePath = path.join(os.homedir(), '.campus-agent', 'state.json');
+  let state;
+  try {
+    state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+  } catch {
+    return { ok: false, error: '未找到 campus-agent 状态' };
+  }
+  const canvas = state.canvas;
+  if (!canvas || !Array.isArray(canvas.items)) return { ok: false, error: 'Canvas 未同步' };
+  const nameById = new Map((canvas.courses || []).map((c) => [c.id, c.name || c.code]));
+  const assignments = canvas.items
+    .filter((i) => i.kind === 'assignment')
+    .map((i) => ({
+      title: i.name || '',
+      course: nameById.get(i.courseId) || '',
+      dueAt: i.dueAt || null,
+    }))
+    .sort((a, b) => {
+      const ta = a.dueAt ? Date.parse(a.dueAt) : Infinity;
+      const tb = b.dueAt ? Date.parse(b.dueAt) : Infinity;
+      return ta - tb;
+    })
+    .slice(0, 5);
+  return { ok: true, syncedAt: canvas.syncedAt || null, assignments };
 }
 
 async function getInfo() {
-  const [deepseek, campus, todayCost] = await Promise.all([
+  const [deepseek, campus, canvas, todayCost] = await Promise.all([
     fetchDeepSeekBalance(),
     readCampusInfo(),
+    readCanvasInfo(),
     fetchTodayCost(),
   ]);
-  return { deepseek, todayCost, campus, now: new Date().toISOString() };
+  return { deepseek, todayCost, campus, canvas, now: new Date().toISOString() };
 }
 
 function createPetWindow() {

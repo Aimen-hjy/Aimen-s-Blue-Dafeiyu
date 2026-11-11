@@ -19,12 +19,13 @@ npm start
 - **待机**：循环播放「待机呼吸休闲」（透明 webm）
 - **单击**：随机播放一个「点击回应」动画（5 选 1）+ 随机气泡
 - **拖拽**：跟随鼠标移动，鱼随方向轻微倾斜（保持待机画面，不改变大小）
-- **右键 / 双击**：打开状态面板（校园信息 + DeepSeek 余额 / 当日消费金额）
+- **右键 / 双击**：打开状态面板（今日课程 + Canvas 任务 + DeepSeek 余额 / 当日消费金额）
 - **状态面板**：拖动标题栏可移动；拖动鱼时面板保持相对位置跟随；点 × 或再次右键/双击关闭
 
 ## 数据来源
 
-- **校园信息**：读取 `~/.campus-agent/state.json`（需先 `campus-agent sync_timetable` 同步课表）
+- **今日课程**：读取 `~/.campus-agent/state.json` 的课表缓存，按上海交大节次表把节次换算成具体上课时间，只显示课程名 / 地点 / 时间（需先 `campus-agent sync_timetable` 同步课表）
+- **Canvas 任务**：读取 `~/.campus-agent/state.json` 的 `canvas` 缓存，列出截止时间最近的作业（需先在 campus-agent 中 `refresh_canvas_courses` + `refresh_canvas_course` 同步）
 - **DeepSeek 余额**：读取 `~/.dsh/.credentials.yaml` 的 `DEEPSEEK_API_KEY`，调 `api.deepseek.com/user/balance`
 - **当日消费金额**：读取 `pet/src/config.json` 的 `deepseekUserToken`（平台登录态，见下），调 `platform.deepseek.com/api/v0/usage/cost` 按天累加今日各模型/各计费项金额
 

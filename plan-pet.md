@@ -5,7 +5,7 @@
 一个 Windows 桌面宠物：透明、置顶、可拖拽的蓝色大肥鱼，挂载在桌面上。第一版包含：
 
 1. **待机动作**：循环播放「待机呼吸休闲」透明 webm；**互动独立动作**：单击随机「点击回应」（5 选 1）、拖拽倾斜跟随（保持待机画面，不换片段）。
-2. **校园信息**：读 `~/.campus-agent/state.json`，显示课表同步状态、今日课程。
+2. **校园信息**：读 `~/.campus-agent/state.json`，今日课程只显示课程名 / 地点 / 具体时间（按 SJTU 节次表换算），并列出最近 Canvas 作业。
 3. **DeepSeek 平台数据**：显示余额（`api.deepseek.com/user/balance`）+ 当日消费金额（平台私密接口 `platform.deepseek.com/api/v0/usage/cost`，需登录态 `userToken`）。
 
 ## 动画方案
