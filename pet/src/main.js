@@ -301,15 +301,15 @@ function runDshChat(text, sessionId, onToken, onDone) {
     onDone({ ok: false, error: '未找到 DeepSeek API Key' });
     return;
   }
-  const npxBin = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-  const args = ['--yes', '@deepseek-ai/dsh', '--profile', 'headless', '--json'];
-  if (sessionId) args.push('--session-id', sessionId);
-  args.push(text);
+  // Windows 上 spawn .cmd 必须 shell:true（否则抛 EINVAL）；任务文本走 stdin，避免进入 shell 命令行
+  const cmd = ['npx', '--yes', '@deepseek-ai/dsh', '--profile', 'headless', '--json',
+    ...(sessionId ? ['--session-id', sessionId] : []), '-'].join(' ');
   let child;
   try {
-    child = spawn(npxBin, args, {
+    child = spawn(cmd, {
+      shell: true,
       env: { ...process.env, DEEPSEEK_API_KEY: key },
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
     });
   } catch (e) {
@@ -357,6 +357,8 @@ function runDshChat(text, sessionId, onToken, onDone) {
     else if (finalText || code === 0) finish({ ok: true, text: finalText, sessionId: sid });
     else finish({ ok: false, error: (errBuf || 'DSH 无输出').trim().slice(0, 300), sessionId: sid });
   });
+  child.stdin.write(text);
+  child.stdin.end();
 }
 
 function createPetWindow() {

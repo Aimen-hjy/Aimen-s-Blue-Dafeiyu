@@ -63,6 +63,7 @@ function playClick() {
 }
 
 video.addEventListener('mousedown', (e) => {
+  if (e.button !== 0) return; // 只处理左键拖拽；右键交给 contextmenu 菜单
   dragging = true;
   moved = false;
   startX = e.screenX;
@@ -87,7 +88,8 @@ window.addEventListener('mousemove', (e) => {
   }
 });
 
-window.addEventListener('mouseup', () => {
+window.addEventListener('mouseup', (e) => {
+  if (e.button !== 0) return; // 只处理左键单击；右键/中键不触发开窗
   if (!dragging) return;
   dragging = false;
   video.style.transition = 'transform 0.2s ease';
