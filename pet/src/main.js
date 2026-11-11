@@ -2,7 +2,6 @@ const { app, BrowserWindow, ipcMain, screen } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
-const { execFileSync } = require('node:child_process');
 
 let petWin = null;
 let panelWin = null;
@@ -60,71 +59,75 @@ async function fetchDeepSeekBalance() {
   }
 }
 
-/** 递归列出目录下所有 session JSONL(zstd) 日志文件。 */
-function listZstdLogs(dir) {
-  let out = [];
-  let entries;
+/** 从 env / pet config 解析 DeepSeek 平台登录态 userToken（本地秘密，绝不外发）。 */
+function resolveDeepSeekUserToken() {
+  if (process.env.DEEPSEEK_USER_TOKEN) return normalizeUserToken(process.env.DEEPSEEK_USER_TOKEN);
   try {
-    entries = fs.readdirSync(dir, { withFileTypes: true });
-  } catch {
-    return out;
-  }
-  for (const e of entries) {
-    const p = path.join(dir, e.name);
-    if (e.isDirectory()) out = out.concat(listZstdLogs(p));
-    else if (e.isFile() && e.name.endsWith('.jsonl.zstd')) out.push(p);
-  }
-  return out;
+    const cfg = JSON.parse(fs.readFileSync(path.join(__dirname, 'config.json'), 'utf8'));
+    if (cfg.deepseekUserToken) return normalizeUserToken(String(cfg.deepseekUserToken));
+  } catch {}
+  return null;
 }
 
-/** 解压 zstd 文本；文件被截断（活跃会话写入中）时仍返回已解码的完整帧。 */
-function zstdDecompressText(file) {
+/** userToken 可能被存成 {"value":"...","__version":"0"} 或直接是 token 字符串。 */
+function normalizeUserToken(v) {
+  v = String(v).trim();
   try {
-    return execFileSync('zstd', ['-d', '-c', file], {
-      encoding: 'utf8',
-      maxBuffer: 64 * 1024 * 1024,
-    });
-  } catch (e) {
-    return e && e.stdout ? e.stdout : null;
-  }
+    const o = JSON.parse(v);
+    if (o && typeof o.value === 'string' && o.value) return o.value.trim();
+  } catch {}
+  return v;
 }
 
 /**
- * 计算「当日 token 消耗」（上海时区）：即 DeepSeek 账号在 API 上产生的完整 token
- * 用量 = 输入（缓存未命中 inputTokens + 缓存命中 cacheReadTokens + 缓存写入
- * cacheWriteTokens）+ 输出 outputTokens。balance 接口没有逐日用量，只能从 DSH
- * 会话日志里 assistant/message 事件的 data.usage（每条为增量）累计。
+ * 读 DeepSeek 平台私密接口取「当日消费金额」（CNY）。balance 公开接口只有余额，
+ * 逐日金额在 platform.deepseek.com 的 usage/cost（需要浏览器登录态 userToken）。
+ * 按北京时区的今天日期匹配当月分天数据，累加各模型/各计费项的 amount。
  */
-function todayTokenUsage() {
-  const sessionsRoot = path.join(os.homedir(), '.dsh', 'sessions');
-  // 今天 0 点（上海 UTC+8）对应的 UTC 毫秒时间戳
-  const nowSh = new Date(Date.now() + 8 * 3600000);
-  const todayMidUtc =
-    Date.UTC(nowSh.getUTCFullYear(), nowSh.getUTCMonth(), nowSh.getUTCDate()) - 8 * 3600000;
-
-  let input = 0;
-  let output = 0;
-  let cache = 0;
-  for (const f of listZstdLogs(sessionsRoot)) {
-    const text = zstdDecompressText(f);
-    if (!text) continue;
-    for (const line of text.split('\n')) {
-      if (line.indexOf('assistant/message') < 0) continue;
-      let o;
-      try {
-        o = JSON.parse(line);
-      } catch {
-        continue;
+async function fetchTodayCost() {
+  const token = resolveDeepSeekUserToken();
+  if (!token) return { ok: false, error: '未找到 DeepSeek 平台 userToken' };
+  const nowSh = new Date(Date.now() + 8 * 3600000); // 平移到北京时区
+  const year = nowSh.getUTCFullYear();
+  const month = nowSh.getUTCMonth() + 1;
+  const today =
+    `${year}-${String(month).padStart(2, '0')}-${String(nowSh.getUTCDate()).padStart(2, '0')}`;
+  try {
+    const res = await fetch(
+      `https://platform.deepseek.com/api/v0/usage/cost?month=${month}&year=${year}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
+          'x-client-platform': 'web',
+        },
       }
-      const t = o.time;
-      const usage = (o.data && o.data.usage) || null;
-      if (!usage || typeof t !== 'number' || t < todayMidUtc) continue;
-      input += usage.inputTokens || 0;
-      output += usage.outputTokens || 0;
-      cache += (usage.cacheReadTokens || 0) + (usage.cacheWriteTokens || 0);
+    );
+    if (!res.ok) return { ok: false, error: `usage 接口 HTTP ${res.status}` };
+    const body = await res.json();
+    // biz_data 是数组（通常 1 组），每组含 days（按天）与 currency
+    const groups = body?.data?.biz_data;
+    if (!Array.isArray(groups)) {
+      return { ok: false, error: body?.data?.biz_msg || body?.msg || '用量数据为空' };
     }
+    let amount = 0;
+    for (const g of groups) {
+      const days = g?.days;
+      if (!Array.isArray(days)) continue;
+      const day = days.find((d) => d.date === today);
+      if (!day) continue;
+      for (const m of day.data || []) {
+        for (const u of m.usage || []) {
+          const n = parseFloat(u.amount);
+          if (Number.isFinite(n)) amount += n;
+        }
+      }
+    }
+    amount = Math.round(amount * 10000) / 10000;
+    return { ok: true, amount, currency: groups[0]?.currency || 'CNY', date: today };
+  } catch (e) {
+    return { ok: false, error: String((e && e.message) || e) };
   }
-  return { input, output, cache, total: input + output + cache };
 }
 
 /** 计算「今天上海时区」的课程列表（只读本地缓存，不做网络请求）。 */
@@ -174,8 +177,12 @@ function readCampusInfo() {
 }
 
 async function getInfo() {
-  const [deepseek, campus] = await Promise.all([fetchDeepSeekBalance(), readCampusInfo()]);
-  return { deepseek, todayTokens: todayTokenUsage(), campus, now: new Date().toISOString() };
+  const [deepseek, campus, todayCost] = await Promise.all([
+    fetchDeepSeekBalance(),
+    readCampusInfo(),
+    fetchTodayCost(),
+  ]);
+  return { deepseek, todayCost, campus, now: new Date().toISOString() };
 }
 
 function createPetWindow() {

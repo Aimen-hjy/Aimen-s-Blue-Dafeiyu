@@ -6,7 +6,7 @@
 
 1. **待机动作**：循环播放「待机呼吸休闲」透明 webm；**互动独立动作**：单击随机「点击回应」（5 选 1）、拖拽倾斜跟随（保持待机画面，不换片段）。
 2. **校园信息**：读 `~/.campus-agent/state.json`，显示课表同步状态、今日课程。
-3. **DeepSeek 平台数据**：显示余额 / 用量（`api.deepseek.com/user/balance`），后续可扩展 token 消耗明细。
+3. **DeepSeek 平台数据**：显示余额（`api.deepseek.com/user/balance`）+ 当日消费金额（平台私密接口 `platform.deepseek.com/api/v0/usage/cost`，需登录态 `userToken`）。
 
 ## 动画方案
 
@@ -54,7 +54,7 @@ pet/
 - [x] Electron 骨架（透明置顶窗口 + 拖拽/点击/待机动画 + 信息面板）
 - [x] 动画升级为 dsh-pet 透明 webm 片段（待机 + 点击回应；拖拽改用倾斜跟随，避免换片“变大”）
 - [x] 状态面板可拖动标题栏移动；拖动鱼时面板按相对偏移跟随（`pet:move` 同步移动面板）
-- [x] DeepSeek token 消耗明细（balance 接口只有余额；从 DSH 会话日志 `session.v4.jsonl.zstd` 按日统计 `assistant/message` 的 `data.usage`）
+- [x] DeepSeek 当日消费金额（balance 接口只有余额；平台私密接口 `usage/cost` + 浏览器登录态 `userToken` 按天累加今日金额）
 - [ ] 校园信息提醒（上课前/作业截止前气泡）
 - [ ] 可选扩展：接入更多 dsh-pet 片段（睡觉三段接力、余额分档、工作状态、随机小动作）
 - [ ] MiniMax key（已本地保存未入库）：后续可用 `image-01` 生成额外表情/姿态帧

@@ -19,14 +19,16 @@ npm start
 - **待机**：循环播放「待机呼吸休闲」（透明 webm）
 - **单击**：随机播放一个「点击回应」动画（5 选 1）+ 随机气泡
 - **拖拽**：跟随鼠标移动，鱼随方向轻微倾斜（保持待机画面，不改变大小）
-- **右键 / 双击**：打开状态面板（校园信息 + DeepSeek 余额 / 当日 token 消耗）
+- **右键 / 双击**：打开状态面板（校园信息 + DeepSeek 余额 / 当日消费金额）
 - **状态面板**：拖动标题栏可移动；拖动鱼时面板保持相对位置跟随；点 × 或再次右键/双击关闭
 
 ## 数据来源
 
 - **校园信息**：读取 `~/.campus-agent/state.json`（需先 `campus-agent sync_timetable` 同步课表）
 - **DeepSeek 余额**：读取 `~/.dsh/.credentials.yaml` 的 `DEEPSEEK_API_KEY`，调 `api.deepseek.com/user/balance`
-- **当日 token 消耗**：DeepSeek 账号的 API 完整 token 用量（输入含缓存命中/未命中 + 输出），读取 `~/.dsh/sessions/*/session-*/session.v4.jsonl.zstd` 统计当天 `assistant/message` 事件的 `data.usage`
+- **当日消费金额**：读取 `pet/src/config.json` 的 `deepseekUserToken`（平台登录态，见下），调 `platform.deepseek.com/api/v0/usage/cost` 按天累加今日各模型/各计费项金额
+
+> `deepseekUserToken` 是浏览器登录 `platform.deepseek.com` 后 localStorage 里的 `userToken`（形如 `{"value":"...","__version":"0"}`，取其中 `value`）。公开 API 只有余额，没有逐日金额；该接口是平台私密接口，token 过期后需重新到浏览器里取一次。已存入 `pet/src/config.json`（gitignore，纯本地）。
 
 ## 素材
 

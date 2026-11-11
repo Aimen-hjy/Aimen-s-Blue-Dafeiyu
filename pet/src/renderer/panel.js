@@ -18,17 +18,17 @@ function render(info) {
   }
 
   const d = info.deepseek || {};
-  const t = info.todayTokens;
+  const cost = info.todayCost;
   let parts = [];
   if (!d.ok) {
     parts.push(`<div class="dim">${d.error || '无数据'}</div>`);
   } else {
     parts.push(`<div>余额 <b>¥${d.totalBalance ?? '—'}</b>${d.currency ? ' ' + d.currency : ''}</div>`);
   }
-  if (t && typeof t.total === 'number') {
-    parts.push(`<div>当日 token 消耗 <b>${t.total.toLocaleString()}</b></div>`);
+  if (cost && cost.ok && typeof cost.amount === 'number') {
+    parts.push(`<div>当日消费金额 <b>¥${parseFloat(cost.amount.toFixed(4))}</b></div>`);
   } else {
-    parts.push(`<div class="dim">当日 token 消耗 —</div>`);
+    parts.push(`<div class="dim">当日消费金额 ${cost && cost.error ? cost.error : '—'}</div>`);
   }
   dsEl.innerHTML = parts.join('');
 }
