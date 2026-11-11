@@ -10,6 +10,11 @@ let panelWin = null;
 // 避免高 DPI（如 150%）下 setPosition 的 DIP 舍入累积把窗口撑宽。
 const PET_WIDTH = 400;
 const PET_HEIGHT = 225;
+const PANEL_WIDTH = 340;
+const PANEL_HEIGHT = 460;
+
+// 面板相对鱼窗口的偏移；鱼被拖动时面板按此偏移跟随，保持相对位置
+let panelOffset = null;
 
 /** 从 env / dsh 凭据 / pet config 依次解析 DeepSeek API Key（本地秘密，绝不外发）。 */
 function resolveDeepSeekKey() {
@@ -136,8 +141,8 @@ function createPetWindow() {
 
 function createPanelWindow() {
   panelWin = new BrowserWindow({
-    width: 340,
-    height: 460,
+    width: PANEL_WIDTH,
+    height: PANEL_HEIGHT,
     show: false,
     transparent: true,
     backgroundColor: '#00000000',
@@ -154,27 +159,27 @@ function createPanelWindow() {
   });
   panelWin.setAlwaysOnTop(true, 'screen-saver');
   panelWin.loadFile(path.join(__dirname, 'renderer', 'panel.html'));
-  panelWin.on('blur', () => {
-    if (panelWin && panelWin.isVisible()) panelWin.hide();
-  });
 }
 
 function togglePanel() {
   if (!panelWin || !petWin) return;
   if (panelWin.isVisible()) {
     panelWin.hide();
+    panelOffset = null;
     return;
   }
   const [x, y] = petWin.getPosition();
   const [w, h] = petWin.getSize();
   const display = screen.getDisplayMatching({ x, y, width: w, height: h });
   const wa = display.workArea;
-  const bounds = panelWin.getBounds();
   let px = x + w + 12;
   let py = y;
-  if (px + bounds.width > wa.x + wa.width) px = x - bounds.width - 12;
-  py = Math.max(wa.y, Math.min(py, wa.y + wa.height - bounds.height));
-  panelWin.setPosition(Math.round(px), Math.round(py));
+  if (px + PANEL_WIDTH > wa.x + wa.width) px = x - PANEL_WIDTH - 12;
+  py = Math.max(wa.y, Math.min(py, wa.y + wa.height - PANEL_HEIGHT));
+  px = Math.round(px);
+  py = Math.round(py);
+  panelWin.setBounds({ x: px, y: py, width: PANEL_WIDTH, height: PANEL_HEIGHT });
+  panelOffset = { dx: px - x, dy: py - y };
   panelWin.show();
   panelWin.webContents.send('panel:refresh');
 }
@@ -194,7 +199,24 @@ app.on('window-all-closed', () => app.quit());
 ipcMain.handle('pet:get-position', () => (petWin ? petWin.getPosition() : [0, 0]));
 ipcMain.on('pet:move', (_e, x, y) => {
   // 用 setBounds 显式锁定宽高：高 DPI 下 setPosition 会因 DIP 舍入累积把窗口撑宽
-  if (petWin) petWin.setBounds({ x: Math.round(x), y: Math.round(y), width: PET_WIDTH, height: PET_HEIGHT });
+  const nx = Math.round(x);
+  const ny = Math.round(y);
+  if (petWin) petWin.setBounds({ x: nx, y: ny, width: PET_WIDTH, height: PET_HEIGHT });
+  // 面板跟随鱼，保持相对位置
+  if (panelWin && panelWin.isVisible() && panelOffset) {
+    panelWin.setBounds({ x: nx + panelOffset.dx, y: ny + panelOffset.dy, width: PANEL_WIDTH, height: PANEL_HEIGHT });
+  }
+});
+ipcMain.handle('pet:get-panel-position', () => (panelWin ? panelWin.getPosition() : [0, 0]));
+ipcMain.on('panel:move', (_e, x, y) => {
+  const nx = Math.round(x);
+  const ny = Math.round(y);
+  if (panelWin) panelWin.setBounds({ x: nx, y: ny, width: PANEL_WIDTH, height: PANEL_HEIGHT });
+  // 更新相对偏移，之后鱼移动时面板按新位置跟随
+  if (petWin) {
+    const [fx, fy] = petWin.getPosition();
+    panelOffset = { dx: nx - fx, dy: ny - fy };
+  }
 });
 ipcMain.on('pet:toggle-panel', () => togglePanel());
 ipcMain.on('pet:close-panel', () => {

@@ -41,3 +41,39 @@ closeBtn.addEventListener('click', () => window.petAPI.closePanel());
 window.petAPI.onRefresh(refresh);
 refresh();
 setInterval(refresh, 30000);
+
+// —— 拖动标题栏移动面板 ——
+const header = document.getElementById('header');
+let dragging = false;
+let moved = false;
+let startX = 0;
+let startY = 0;
+let winX = 0;
+let winY = 0;
+
+header.addEventListener('mousedown', (e) => {
+  if (e.target.closest('#close')) return; // 点关闭按钮不触发拖动
+  dragging = true;
+  moved = false;
+  startX = e.screenX;
+  startY = e.screenY;
+  window.petAPI.getPanelPosition().then(([x, y]) => {
+    winX = x;
+    winY = y;
+  });
+  e.preventDefault();
+});
+
+window.addEventListener('mousemove', (e) => {
+  if (!dragging) return;
+  const dx = e.screenX - startX;
+  const dy = e.screenY - startY;
+  if (Math.abs(dx) + Math.abs(dy) > 4) {
+    moved = true;
+    window.petAPI.movePanel(winX + dx, winY + dy);
+  }
+});
+
+window.addEventListener('mouseup', () => {
+  dragging = false;
+});
