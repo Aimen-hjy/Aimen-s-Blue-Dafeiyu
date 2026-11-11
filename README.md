@@ -97,6 +97,10 @@ npm run typecheck   # 类型检查
 npm test            # 构建 + 运行单元测试（外部 HTTP 全部 mock）
 ```
 
+## 桌宠
+
+仓库里还带一个 Electron 桌面宠物「蓝色大肥鱼」（DeepSeek 拟人形象）：透明置顶窗口，单击打开对话窗（DSH 聊天 + 截屏提问 + 历史会话）、右键打开状态面板（今日课程 / Canvas 任务 / DeepSeek 余额）。详见 [`pet/README.md`](pet/README.md)。
+
 ## 许可
 
 本项目参考 [Dela](https://github.com/Chang-Yo/Dela)（GPL-3.0-or-later）的接口与数据结构进行逆向与重写，功能接口保持一致、文案与实现为本项目独立编写。若分发本项目，请一并遵守 GPL-3.0 的约束。

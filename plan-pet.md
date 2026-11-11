@@ -7,7 +7,7 @@
 1. **待机动作**：循环播放「待机呼吸休闲」透明 webm；**互动独立动作**：单击随机「点击回应」（5 选 1）、拖拽倾斜跟随（保持待机画面，不换片段）。
 2. **校园信息**：读 `~/.campus-agent/state.json`，今日课程只显示课程名 / 地点 / 具体时间（按 SJTU 节次表换算），并列出最近 Canvas 作业。
 3. **DeepSeek 平台数据**：显示余额（`api.deepseek.com/user/balance`）+ 当日消费金额（平台私密接口 `platform.deepseek.com/api/v0/usage/cost`，需登录态 `userToken`）。
-4. **对话 / 截屏提问**：单击鱼打开对话窗——文字聊天走真实 DSH（headless 会话连续）；`📸 截屏` 抓当前屏幕做视觉问答（`deepseek-flash`）；`🚀 DSH` 启动完整 DSH Web UI。
+4. **对话 / 截屏提问**：单击鱼打开对话窗——文字聊天走真实 DSH（headless 会话连续，支持「🕘 历史」查看/续聊历史会话、「＋」新建对话）；`📸 截屏` 抓当前屏幕做视觉问答（`deepseek-flash`）；`🚀 DSH` 启动完整 DSH Web UI。
 
 ## 动画方案
 
@@ -26,7 +26,7 @@
 ## 技术形态
 
 - Electron 透明置顶无边框窗口（与 Dela 同栈）。
-- 两个窗口：`petWin`（鱼）+ `panelWin`（信息面板，右键/双击切换）。
+- 三个窗口：`petWin`（鱼）+ `panelWin`（状态面板）+ `chatWin`（对话窗，右键菜单选择打开）。
 - 放在仓库 `pet/` 目录，与 campus-agent 同仓。
 
 ## 目录
@@ -35,14 +35,16 @@
 pet/
   package.json
   src/
-    main.js            # 主进程：窗口、IPC、余额/校园信息读取
+    main.js            # 主进程：窗口、IPC、余额/校园信息、DSH 会话历史
     preload.js         # contextBridge 暴露 petAPI
     renderer/
       index.html       # 鱼（<video>）
       renderer.js      # 动画状态机：idle/click/drag + 拖拽/点击/气泡
       styles.css
-      panel.html       # 信息面板
+      panel.html       # 状态面板
       panel.js
+      chat.html        # 对话窗（历史会话/新建对话/截图提问）
+      chat.js
   assets/
     webm/              # 透明动画片段（来自 dsh-pet，MIT）
     fish.png           # 早期占位静态图
@@ -57,6 +59,7 @@ pet/
 - [x] 状态面板可拖动标题栏移动；拖动鱼时面板按相对偏移跟随（`pet:move` 同步移动面板）
 - [x] DeepSeek 当日消费金额（balance 接口只有余额；平台私密接口 `usage/cost` + 浏览器登录态 `userToken` 按天累加今日金额）
 - [x] 单击鱼打开对话窗：文字聊天走 DSH（headless + `--session-id` 续聊）+ 截屏视觉问答（`desktopCapturer` 抓屏 + `deepseek-flash` 图片输入）+ 一键启动完整 DSH Web UI；右键弹菜单选状态/对话；面板/对话窗右下角把手缩放
+- [x] 对话窗历史会话：列出 `~/.dsh/sessions` 各会话（`zstd` 解压取标题/消息）点击续聊、「＋」新建对话；DeepSeek 余额/用量/视觉问答改走 `net.fetch` 绕过杀软证书拦截（修复 fetch failed）
 - [ ] 校园信息提醒（上课前/作业截止前气泡）
 - [ ] 可选扩展：接入更多 dsh-pet 片段（睡觉三段接力、余额分档、工作状态、随机小动作）
 - [ ] MiniMax key（已本地保存未入库）：后续可用 `image-01` 生成额外表情/姿态帧
