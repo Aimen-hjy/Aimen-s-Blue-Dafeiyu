@@ -189,7 +189,7 @@ function readCampusInfo() {
   return { ok: true, today: todayClasses(lessons, semesterStart) };
 }
 
-/** 从 campus-agent 缓存读最近的 Canvas 作业（截止时间最近的排前）。 */
+/** 从 campus-agent 缓存读最近要交的 Canvas 作业（截止时间在未来、最近的排前）。 */
 function readCanvasInfo() {
   const statePath = path.join(os.homedir(), '.campus-agent', 'state.json');
   let state;
@@ -201,19 +201,16 @@ function readCanvasInfo() {
   const canvas = state.canvas;
   if (!canvas || !Array.isArray(canvas.items)) return { ok: false, error: 'Canvas 未同步' };
   const nameById = new Map((canvas.courses || []).map((c) => [c.id, c.name || c.code]));
+  const now = Date.now();
   const assignments = canvas.items
-    .filter((i) => i.kind === 'assignment')
+    .filter((i) => i.kind === 'assignment' && i.dueAt && Date.parse(i.dueAt) >= now)
     .map((i) => ({
       title: i.name || '',
       course: nameById.get(i.courseId) || '',
       dueAt: i.dueAt || null,
     }))
-    .sort((a, b) => {
-      const ta = a.dueAt ? Date.parse(a.dueAt) : Infinity;
-      const tb = b.dueAt ? Date.parse(b.dueAt) : Infinity;
-      return ta - tb;
-    })
-    .slice(0, 5);
+    .sort((a, b) => Date.parse(a.dueAt) - Date.parse(b.dueAt))
+    .slice(0, 2);
   return { ok: true, syncedAt: canvas.syncedAt || null, assignments };
 }
 
