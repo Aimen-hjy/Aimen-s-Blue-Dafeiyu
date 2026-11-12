@@ -125,17 +125,23 @@ async function allPages(path: string, params: Record<string, string>): Promise<u
   }
 }
 
-export async function listCourses(): Promise<VideoCourse[]> {
-  await checkVideoLogin();
+/** 当前学期 id（/list/termYear 里 currentTerm 或最后一项）。 */
+export async function getCurrentTermId(): Promise<number | null> {
   const termResponse = await campusJson(`${BASE}/list/termYear`);
   const terms = z
     .array(z.object({ id, currentTerm: z.boolean().optional() }))
     .safeParse(Array.isArray(termResponse) ? termResponse : unwrap(termResponse));
   if (!terms.success) throw toolError("UPSTREAM_ERROR", "交大视频学期数据格式已变化");
   const term = terms.data.find((value) => value.currentTerm) ?? terms.data.at(-1);
-  if (!term) return [];
+  return term ? term.id : null;
+}
+
+export async function listCourses(): Promise<VideoCourse[]> {
+  await checkVideoLogin();
+  const termId = await getCurrentTermId();
+  if (termId === null) return [];
   const records = await allPages("myself/curriculum", {
-    acteId: String(term.id),
+    acteId: String(termId),
     courBeginTime: "",
     courEndTime: "",
   });
@@ -148,7 +154,7 @@ export async function listCourses(): Promise<VideoCourse[]> {
     ).filter((raw) => {
       const course = z.object({ acteId: id }).safeParse(raw);
       if (!course.success) throw toolError("UPSTREAM_ERROR", "交大视频课程学期数据格式已变化");
-      return course.data.acteId === term.id;
+      return course.data.acteId === termId;
     }),
   );
   const courses = new Map<number, VideoCourse>();

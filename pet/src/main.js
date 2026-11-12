@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, screen, desktopCapturer, shell, Menu, net }
 const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
+const crypto = require('node:crypto');
 const { spawn, spawnSync } = require('node:child_process');
 
 let petWin = null;
@@ -26,9 +27,65 @@ const BALANCE_CHECK_IDLE_MS = 30 * 60 * 1000;
 // 面板相对鱼窗口的偏移；鱼被拖动时面板按此偏移跟随，保持相对位置
 let panelOffset = null;
 
-/** 从 env / dsh 凭据 / pet config 依次解析 DeepSeek API Key（本地秘密，绝不外发）。 */
+// —— 多账号 profile：与 campus-agent 的 config/state 路径保持一致 ——
+function activeProfileName() {
+  try {
+    return fs.readFileSync(path.join(os.homedir(), '.campus-agent', 'active-profile'), 'utf8').trim();
+  } catch {
+    return '';
+  }
+}
+
+function campusConfigPath() {
+  const name = activeProfileName();
+  if (name) return path.join(os.homedir(), '.campus-agent', 'profiles', name + '.json');
+  return path.join(os.homedir(), '.campus-agent', 'config.json');
+}
+
+function campusStatePath() {
+  const name = activeProfileName();
+  if (name) return path.join(os.homedir(), '.campus-agent', 'profiles', name + '.state.json');
+  return path.join(os.homedir(), '.campus-agent', 'state.json');
+}
+
+/** 读 campus-agent 配置为对象（profile 感知）；加密配置需 CAMPUS_AGENT_SECRET 才能解。 */
+function readCampusConfig() {
+  let raw;
+  try {
+    raw = fs.readFileSync(campusConfigPath(), 'utf8');
+  } catch {
+    return null;
+  }
+  if (raw.startsWith('CAMPUS_AGENT_V1:')) {
+    const secret = process.env.CAMPUS_AGENT_SECRET;
+    if (!secret) return null;
+    try {
+      const key = crypto.scryptSync(secret, 'campus-agent-salt', 32);
+      const buf = Buffer.from(raw.slice('CAMPUS_AGENT_V1:'.length), 'base64');
+      const iv = buf.subarray(0, 12);
+      const tag = buf.subarray(buf.length - 16);
+      const ct = buf.subarray(12, buf.length - 16);
+      const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+      decipher.setAuthTag(tag);
+      raw = decipher.update(ct).toString('utf8') + decipher.final('utf8');
+    } catch {
+      return null;
+    }
+  }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+/** 从 env / profile 配置 / dsh 凭据 / pet config 依次解析 DeepSeek API Key（本地秘密，绝不外发）。 */
 function resolveDeepSeekKey() {
   if (process.env.DEEPSEEK_API_KEY) return process.env.DEEPSEEK_API_KEY.trim();
+  const campusCfg = readCampusConfig();
+  if (campusCfg && campusCfg.deepseek && campusCfg.deepseek.apiKey) {
+    return String(campusCfg.deepseek.apiKey).trim();
+  }
   for (const p of [
     path.join(os.homedir(), '.dsh', '.credentials.yaml'),
     path.join(os.homedir(), '.dsh', 'credentials.yaml'),
@@ -90,9 +147,13 @@ async function checkBalanceAndWarn() {
   balanceCheckTimer = setTimeout(checkBalanceAndWarn, next);
 }
 
-/** 从 env / pet config 解析 DeepSeek 平台登录态 userToken（本地秘密，绝不外发）。 */
+/** 从 env / profile 配置 / pet config 解析 DeepSeek 平台登录态 userToken（本地秘密，绝不外发）。 */
 function resolveDeepSeekUserToken() {
   if (process.env.DEEPSEEK_USER_TOKEN) return normalizeUserToken(process.env.DEEPSEEK_USER_TOKEN);
+  const campusCfg = readCampusConfig();
+  if (campusCfg && campusCfg.deepseek && campusCfg.deepseek.userToken) {
+    return normalizeUserToken(String(campusCfg.deepseek.userToken));
+  }
   try {
     const cfg = JSON.parse(fs.readFileSync(path.join(__dirname, 'config.json'), 'utf8'));
     if (cfg.deepseekUserToken) return normalizeUserToken(String(cfg.deepseekUserToken));
@@ -204,7 +265,7 @@ function todayClasses(lessons, semesterStart) {
 }
 
 function readCampusInfo() {
-  const statePath = path.join(os.homedir(), '.campus-agent', 'state.json');
+  const statePath = campusStatePath();
   let state;
   try {
     state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
@@ -222,7 +283,7 @@ function readCampusInfo() {
 
 /** 从 campus-agent 缓存读最近要交的 Canvas 作业（截止时间在未来、最近的排前）。 */
 function readCanvasInfo() {
-  const statePath = path.join(os.homedir(), '.campus-agent', 'state.json');
+  const statePath = campusStatePath();
   let state;
   try {
     state = JSON.parse(fs.readFileSync(statePath, 'utf8'));

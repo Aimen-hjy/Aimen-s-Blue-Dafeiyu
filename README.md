@@ -1,10 +1,10 @@
 # campus-agent
 
-一个面向 SJTU 校园服务的 **MCP（Model Context Protocol）服务器**。它通过 stdio 暴露 29 个工具，让 [DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness)（`dsh`）等 agent 用自然语言调用校园服务：查课表、收邮件、看课堂录像文稿与 PPT 切片、读 Canvas 课程资料、逛水源社区、管理待办。
+一个面向 SJTU 校园服务的 **MCP（Model Context Protocol）服务器**。它通过 stdio 暴露 33 个工具，让 [DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness)（`dsh`）等 agent 用自然语言调用校园服务：查课表、收邮件、看课堂录像文稿与 PPT 切片、读 Canvas 课程资料、逛水源社区、管理待办、读写持久记忆。
 
 所有凭证只保存在本机 `~/.campus-agent/config.json`，可用 `CAMPUS_AGENT_SECRET` 加密，不上传服务器。
 
-## 功能与工具（29 个）
+## 功能与工具（33 个）
 
 | 服务 | 工具 |
 |---|---|
@@ -14,6 +14,7 @@
 | 水源社区（7） | `status` `list_categories` `list_topics` `read_topic` `read_posts` `search_topics` `link_topic` |
 | 课表（4） | `query_schedule` `sync_timetable` `create_event` `delete_event` |
 | TODO（5） | `query_todos` `query_assignments` `save_todo` `remove_todo` `refresh_todos` |
+| 记忆（4） | `save_memory` `recall_memory` `list_memory` `remove_memory` |
 
 另有 `ping` 健康检查工具。
 
@@ -70,6 +71,23 @@ campus-agent login --cookie "你的 Cookie 整段"
 
 Cookie 供课表等校园服务共用（课堂录像同时需要 Canvas 已配置，以便取 LTI 会话）。
 
+## 多账号（profile）
+
+默认使用 `~/.campus-agent/config.json` 这一套配置。要在一台机器上让多个 jAccount / DeepSeek 账号切换使用，可建命名 profile：
+
+```sh
+campus-agent profile add 张三                     # 新建并切换到该 profile
+campus-agent login                               # 在该 profile 下登录 jAccount
+campus-agent profile set-deepseek <sk-...>        # 登记该 profile 的 DeepSeek API Key
+campus-agent profile set-user-token <token>       # （可选）登记平台 userToken，用于按天消费金额
+campus-agent profile use default                  # 切回默认配置
+campus-agent profile list                         # 列出所有 profile，* 标注当前
+campus-agent profile show                         # 查看当前 profile 及已登记字段
+campus-agent profile remove <名字>                # 删除一个非当前 profile
+```
+
+每个 profile 独立保存自己的 config / state / memory（在 `~/.campus-agent/profiles/` 下），桌宠也会读取当前 profile 的 DeepSeek key 与状态，切换后无需重启。
+
 ## 连接 dsh（MCP）
 
 把 campus-agent 注册为 dsh 的 MCP 服务器。dsh 目前是 dev preview（0.1.0-rc.x），MCP 配置方式可能随版本变化，以下为通用的 stdio 配置形态：
@@ -88,7 +106,7 @@ Cookie 供课表等校园服务共用（课堂录像同时需要 Canvas 已配�
 }
 ```
 
-连接后 agent 应能看到全部 29 个工具，并可用自然语言调用。
+连接后 agent 应能看到全部 33 个工具，并可用自然语言调用。
 
 ## 开发
 

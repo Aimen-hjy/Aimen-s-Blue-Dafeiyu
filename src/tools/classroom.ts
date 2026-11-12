@@ -6,6 +6,7 @@ import {
   formatSegments,
   formatSlides,
   formatTranscript,
+  getCurrentTermId,
   getPpt,
   getTranscript,
   listCourses,
@@ -13,6 +14,7 @@ import {
   safeFileName,
 } from "../clients/classroom.js";
 import { toolError } from "../errors.js";
+import { getState, setState } from "../store.js";
 import { limit, match, offset, page, query, tool } from "./shared.js";
 
 const id = z.number().int().positive();
@@ -22,14 +24,29 @@ export function registerClassroomTools(server: McpServer): void {
   tool(
     server,
     "list_classroom_courses",
-    "联网列出本学期课堂视频课程，返回教学班 ID。需要先登录交大视频（配置 campus.cookie）。",
+    "联网列出本学期课堂视频课程，返回教学班 ID。需要先登录交大视频（配置 campus.cookie）。检测到新学期时会附带 semesterNotice 提醒。",
     { query, offset, limit },
-    async ({ query, offset, limit }) =>
-      page(
-        (await listCourses()).filter((course) => match(`${course.name} ${course.code}`, query)),
-        offset,
-        limit,
-      ),
+    async ({ query, offset, limit }) => {
+      const courses = await listCourses();
+      const termId = await getCurrentTermId();
+      const lastTermId = getState<number>("classroom.lastTermId");
+      let semesterNotice: string | null = null;
+      if (termId !== null) {
+        if (lastTermId !== undefined && termId !== lastTermId) {
+          semesterNotice =
+            "检测到新学期（学期 id 已变化）：请运行 campus-agent sync_timetable 同步新课表，并用 refresh_canvas_courses 刷新 Canvas 课程。";
+        }
+        setState("classroom.lastTermId", termId);
+      }
+      return {
+        ...page(
+          courses.filter((course) => match(`${course.name} ${course.code}`, query)),
+          offset,
+          limit,
+        ),
+        ...(semesterNotice ? { semesterNotice } : {}),
+      };
+    },
   );
 
   tool(

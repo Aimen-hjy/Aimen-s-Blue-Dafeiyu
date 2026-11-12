@@ -29,15 +29,16 @@ npm start
 
 - **今日课程**：读取 `~/.campus-agent/state.json` 的课表缓存，按上海交大节次表把节次换算成具体上课时间，只显示课程名 / 地点 / 时间（需先 `campus-agent sync_timetable` 同步课表）
 - **Canvas 任务**：读取 `~/.campus-agent/state.json` 的 `canvas` 缓存，列出截止时间最近的作业（需先在 campus-agent 中 `refresh_canvas_courses` + `refresh_canvas_course` 同步）
-- **DeepSeek 余额**：读取 `~/.dsh/.credentials.yaml` 的 `DEEPSEEK_API_KEY`，调 `api.deepseek.com/user/balance`
-- **当日消费金额**：读取 `pet/src/config.json` 的 `deepseekUserToken`（平台登录态，见下），调 `platform.deepseek.com/api/v0/usage/cost` 按天累加今日各模型/各计费项金额
+- **DeepSeek 余额**：依次读环境变量 → 当前 campus-agent profile 的 `deepseek.apiKey` → `~/.dsh/.credentials.yaml` → `pet/src/config.json`，调 `api.deepseek.com/user/balance`
+- **当日消费金额**：依次读环境变量 → 当前 profile 的 `deepseek.userToken` → `pet/src/config.json`（平台登录态，见下），调 `platform.deepseek.com/api/v0/usage/cost` 按天累加今日各模型/各计费项金额
+- **多账号**：桌宠跟随 campus-agent 的当前 profile（`~/.campus-agent/active-profile`），读取对应 profile 的 config 与 state；用 `campus-agent profile use <名字>` 切换，无需重启桌宠
 - **对话（DSH）**：文字聊天通过 `npx @deepseek-ai/dsh --profile headless --json` 走真实 DSH 会话（`--session-id` 续聊），API Key 读 `~/.dsh/.credentials.yaml` 并通过 `DEEPSEEK_API_KEY` 环境变量注入
 - **历史会话**：扫描 `~/.dsh/sessions`，用 `zstd` 解压 `session.v4.jsonl.zstd` 读取各会话标题与消息（真实用户提问 + 助手回答，过滤掉 DSH 注入的 runtime-context / 技能提醒噪音）；点历史项回填消息并 `--session-id` 续聊
 - **截屏提问**：Electron `desktopCapturer` 抓主显示器画面 → 直连 `api.deepseek.com/chat/completions`（模型 `deepseek-flash`，支持图片输入）
 
 > 所有 DeepSeek 网络请求（余额 / 当日消费 / 视觉问答）统一走 Electron `net.fetch`（Chromium 网络栈、信任系统证书库），而非 Node 的 `fetch`。原因：卡巴斯基等杀软的 HTTPS 扫描会用自签根证书做中间人，Node `fetch` 不信任它 → 报 `fetch failed`（`SELF_SIGNED_CERT_IN_CHAIN`）；`net.fetch` 与浏览器行为一致、可正常通过。
 
-> `deepseekUserToken` 是浏览器登录 `platform.deepseek.com` 后 localStorage 里的 `userToken`（形如 `{"value":"...","__version":"0"}`，取其中 `value`）。公开 API 只有余额，没有逐日金额；该接口是平台私密接口，token 过期后需重新到浏览器里取一次。已存入 `pet/src/config.json`（gitignore，纯本地）。
+> `deepseekUserToken` 是浏览器登录 `platform.deepseek.com` 后 localStorage 里的 `userToken`（形如 `{"value":"...","__version":"0"}`，取其中 `value`）。公开 API 只有余额，没有逐日金额；该接口是平台私密接口，token 过期后需重新到浏览器里取一次。推荐用 `campus-agent profile set-user-token` 存入当前 profile（随 profile 切换），也可存 `pet/src/config.json`（gitignore，纯本地）。
 
 ## 素材
 

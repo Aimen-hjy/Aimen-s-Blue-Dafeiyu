@@ -7,6 +7,7 @@ import {
   formatSegments,
   formatSlides,
   formatTranscript,
+  getCurrentTermId,
   getPpt,
   getTranscript,
   listCourses,
@@ -214,5 +215,9 @@ describe("classroom client", () => {
     const ppt = await getPpt(1001);
     expect(ppt?.videoId).toBe(1001);
     expect(ppt?.slices).toHaveLength(2);
+  });
+
+  it("getCurrentTermId 返回 currentTerm 学期", async () => {
+    expect(await getCurrentTermId()).toBe(202);
   });
 });

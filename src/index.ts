@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { runLogin } from "./cli.js";
+import { runLogin, runProfile } from "./cli.js";
 import { loadConfig } from "./config.js";
 import { registerCanvasTools } from "./tools/canvas.js";
 import { registerClassroomTools } from "./tools/classroom.js";
 import { registerMailTools } from "./tools/mail.js";
+import { registerMemoryTools } from "./tools/memory.js";
 import { registerShuiyuanTools } from "./tools/shuiyuan.js";
 import { registerTimetableTools } from "./tools/timetable.js";
 import { registerTodoTools } from "./tools/todo.js";
@@ -28,6 +29,7 @@ registerMailTools(server);
 registerClassroomTools(server);
 registerShuiyuanTools(server);
 registerTodoTools(server);
+registerMemoryTools(server);
 
 /** 启动时检查 jAccount 会话是否就绪，缺登录/不完整时在日志里提示，而不是等调用时才报错。 */
 function warnIfNotLoggedIn(): void {
@@ -51,6 +53,11 @@ async function main(): Promise<void> {
 
 if (process.argv[2] === "login") {
   runLogin().catch((err) => {
+    console.error("Fatal error:", err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  });
+} else if (process.argv[2] === "profile") {
+  runProfile().catch((err) => {
     console.error("Fatal error:", err instanceof Error ? err.message : String(err));
     process.exit(1);
   });

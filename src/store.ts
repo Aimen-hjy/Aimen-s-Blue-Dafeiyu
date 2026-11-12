@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { activeProfileName, baseDir, profilesDir } from "./config.js";
 
 /**
  * 本地持久化状态（课程缓存、TODO 等）：
@@ -11,7 +11,11 @@ type State = Record<string, unknown>;
 let cache: State | null = null;
 
 function statePath(): string {
-  return process.env.CAMPUS_AGENT_STATE ?? join(homedir(), ".campus-agent", "state.json");
+  if (process.env.CAMPUS_AGENT_STATE) return process.env.CAMPUS_AGENT_STATE;
+  const name = activeProfileName();
+  return name
+    ? join(profilesDir(), `${name}.state.json`)
+    : join(baseDir(), "state.json");
 }
 
 function load(): State {
