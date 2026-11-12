@@ -1,15 +1,15 @@
 # campus-agent
 
-一个面向 SJTU 校园服务的 **MCP（Model Context Protocol）服务器**。它通过 stdio 暴露 28 个工具，让 [DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness)（`dsh`）等 agent 用自然语言调用校园服务：查课表、收邮件、看课堂录像文稿、读 Canvas 课程资料、逛水源社区、管理待办。
+一个面向 SJTU 校园服务的 **MCP（Model Context Protocol）服务器**。它通过 stdio 暴露 29 个工具，让 [DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness)（`dsh`）等 agent 用自然语言调用校园服务：查课表、收邮件、看课堂录像文稿与 PPT 切片、读 Canvas 课程资料、逛水源社区、管理待办。
 
 所有凭证只保存在本机 `~/.campus-agent/config.json`，可用 `CAMPUS_AGENT_SECRET` 加密，不上传服务器。
 
-## 功能与工具（28 个）
+## 功能与工具（29 个）
 
 | 服务 | 工具 |
 |---|---|
 | Canvas（5） | `get_canvas_status` `list_canvas_courses` `search_canvas_sources` `refresh_canvas_courses` `refresh_canvas_course` |
-| 课堂录像（4） | `list_classroom_courses` `list_classroom_videos` `read_classroom_transcript` `download_classroom_transcripts` |
+| 课堂录像（5） | `list_classroom_courses` `list_classroom_videos` `read_classroom_transcript` `read_classroom_slides` `download_classroom_transcripts` |
 | 邮件（3） | `search_mail` `list_mail_folders` `prepare_email` |
 | 水源社区（7） | `status` `list_categories` `list_topics` `read_topic` `read_posts` `search_topics` `link_topic` |
 | 课表（4） | `query_schedule` `sync_timetable` `create_event` `delete_event` |
@@ -88,7 +88,7 @@ Cookie 供课表等校园服务共用（课堂录像同时需要 Canvas 已配�
 }
 ```
 
-连接后 agent 应能看到全部 27 个工具，并可用自然语言调用。
+连接后 agent 应能看到全部 29 个工具，并可用自然语言调用。
 
 ## 开发
 

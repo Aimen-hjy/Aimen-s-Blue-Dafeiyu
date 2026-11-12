@@ -4,7 +4,9 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import {
   formatSegments,
+  formatSlides,
   formatTranscript,
+  getPpt,
   getTranscript,
   listCourses,
   listVideos,
@@ -33,7 +35,7 @@ export function registerClassroomTools(server: McpServer): void {
   tool(
     server,
     "list_classroom_videos",
-    "联网列出指定教学班的录像节次；返回的录像 id 用于读取或下载语音文稿。",
+    "联网列出指定教学班的录像节次；返回的录像 id 用于读取语音文稿或 PPT 切片，或下载语音文稿。",
     { courseId: id, offset, limit },
     async ({ courseId, offset, limit }) => page(await listVideos(courseId), offset, limit),
   );
@@ -67,6 +69,46 @@ export function registerClassroomTools(server: McpServer): void {
         totalCharacters: text.length,
         nextOffset: offset + limit < text.length ? offset + limit : null,
         nextStartSeconds: transcript?.segments.some((segment) => segment.endMs > endSeconds * 1000)
+          ? endSeconds
+          : null,
+      };
+    },
+  );
+
+  tool(
+    server,
+    "read_classroom_slides",
+    "读取录像时间范围内的 PPT 切片（OCR 文字、关键词、图片地址与时间戳），不写文件、不要求工作区。时间单位为秒，默认读取前五分钟；正文按字符分页。切片时间戳可与 read_classroom_transcript 的语音文稿按时间对齐，用于生成课堂笔记。",
+    {
+      videoId: id,
+      startSeconds: z.number().nonnegative().default(0),
+      endSeconds: z.number().positive().optional(),
+      offset,
+      limit: transcriptLimit,
+    },
+    async ({ videoId, startSeconds, endSeconds = startSeconds + 300, offset, limit }) => {
+      if (endSeconds <= startSeconds)
+        throw toolError("INVALID_INPUT", "结束时间必须晚于开始时间");
+      const ppt = await getPpt(videoId);
+      // 一页 PPT 从其出现时间起一直显示到下一页出现；末页按无穷远处理。
+      const slices =
+        ppt?.slices
+          .map((slice, i) => ({
+            ...slice,
+            shownUntil: ppt.slices[i + 1]?.seekSeconds ?? Number.POSITIVE_INFINITY,
+          }))
+          .filter((slice) => slice.seekSeconds < endSeconds && slice.shownUntil > startSeconds) ??
+        [];
+      const text = slices.length ? formatSlides(slices) : "";
+      return {
+        videoId,
+        available: ppt !== null,
+        startSeconds,
+        endSeconds,
+        text: text.slice(offset, offset + limit),
+        totalCharacters: text.length,
+        nextOffset: offset + limit < text.length ? offset + limit : null,
+        nextStartSeconds: ppt?.slices.some((slice) => slice.seekSeconds >= endSeconds)
           ? endSeconds
           : null,
       };

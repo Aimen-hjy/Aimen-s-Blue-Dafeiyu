@@ -27,6 +27,19 @@ export interface VideoTranscript {
   segments: TranscriptSegment[];
 }
 
+export interface PptSlice {
+  /** PPT 切片在视频中出现的时间（秒），即 imageSeekTime。 */
+  seekSeconds: number;
+  ocrText: string;
+  keywords: string[];
+  imageUrl: string;
+}
+
+export interface VideoPpt {
+  videoId: number;
+  slices: PptSlice[];
+}
+
 const VIDEO_HOME = "https://v.sjtu.edu.cn/jy-application-resourcemanage-ui/";
 const BASE = "https://v.sjtu.edu.cn/jy-application-resourcemanage/v1";
 // 官方页面自用的身份接口；Canvas LTI 取得的会话 Cookie 只作用于该路径。
@@ -208,6 +221,47 @@ export async function getTranscript(videoId: number): Promise<VideoTranscript | 
   return parseTranscript(empty ? null : unwrap(response), parsedId);
 }
 
+const pptSliceSchema = z.object({
+  imageSeekTime: z.coerce.number().nonnegative(),
+  imageUrl: z.string(),
+  ocrText: z.string().nullish(),
+  textKeywordList: z.array(z.string()).nullish(),
+});
+const pptDataSchema = z.object({ docList: z.array(pptSliceSchema) });
+
+export function parsePpt(data: unknown, videoId: number): VideoPpt | null {
+  if (data === null) return null;
+  const parsed = pptDataSchema.safeParse(data);
+  if (!parsed.success) throw toolError("UPSTREAM_ERROR", "交大视频课件数据格式已变化");
+  // 老师逐步书写时同一页会被多次切片，OCR 文字完全相同；按文字去重保留最早出现的一张。
+  const seen = new Set<string>();
+  const slices: PptSlice[] = [];
+  for (const raw of parsed.data.docList) {
+    const ocrText = (raw.ocrText ?? "").replace(/\s+/g, " ").trim();
+    if (!ocrText) continue;
+    if (seen.has(ocrText)) continue;
+    seen.add(ocrText);
+    slices.push({
+      seekSeconds: raw.imageSeekTime,
+      ocrText,
+      keywords: (raw.textKeywordList ?? []).map((item) => item.trim()).filter(Boolean),
+      imageUrl: raw.imageUrl,
+    });
+  }
+  slices.sort((a, b) => a.seekSeconds - b.seekSeconds);
+  return slices.length ? { videoId, slices } : null;
+}
+
+export async function getPpt(videoId: number): Promise<VideoPpt | null> {
+  const parsedId = id.parse(videoId);
+  const url = `${BASE}/course/ai/ppt?courseId=${parsedId}`;
+  const response = await campusJson(url);
+  const empty = z
+    .object({ code: z.null(), status: z.literal(200), ok: z.literal(true), data: z.null() })
+    .safeParse(response).success;
+  return parsePpt(empty ? null : unwrap(response), parsedId);
+}
+
 function timestamp(ms: number): string {
   const seconds = Math.floor(ms / 1000);
   const time = [Math.floor(seconds / 3600), Math.floor(seconds / 60) % 60, seconds % 60]
@@ -228,6 +282,15 @@ export function safeFileName(name: string): string {
 export function formatSegments(segments: TranscriptSegment[]): string {
   return `${segments
     .map(({ startMs, endMs, text }) => `[${timestamp(startMs)}–${timestamp(endMs)}] ${text}`)
+    .join("\n\n")}\n`;
+}
+
+export function formatSlides(slices: PptSlice[]): string {
+  return `${slices
+    .map(({ seekSeconds, ocrText, keywords, imageUrl }) => {
+      const kw = keywords.length ? ` 关键词：${keywords.join("、")}` : "";
+      return `[${timestamp(seekSeconds * 1000)}]${kw}\n${ocrText}\n图片：${imageUrl}`;
+    })
     .join("\n\n")}\n`;
 }
 

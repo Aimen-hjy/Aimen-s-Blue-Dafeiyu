@@ -5,10 +5,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { saveConfig } from "../src/config.js";
 import {
   formatSegments,
+  formatSlides,
   formatTranscript,
+  getPpt,
   getTranscript,
   listCourses,
   listVideos,
+  parsePpt,
   parseTranscript,
   safeFileName,
 } from "../src/clients/classroom.js";
@@ -78,6 +81,20 @@ function route(input: unknown): Response {
         ],
       },
     });
+  if (path.includes("/course/ai/ppt"))
+    return ok({
+      status: 200,
+      ok: true,
+      dataOk: true,
+      result: {
+        docList: [
+          { imageSeekTime: 20, imageUrl: "https://live.sjtu.edu.cn/b.jpg", ocrText: "  第二页\n内容 B  ", textKeywordList: ["B"] },
+          { imageSeekTime: 10, imageUrl: "https://live.sjtu.edu.cn/a.jpg", ocrText: "第一页 内容 A", textKeywordList: ["A"] },
+          { imageSeekTime: 30, imageUrl: "https://live.sjtu.edu.cn/a2.jpg", ocrText: "第一页 内容 A", textKeywordList: ["A"] },
+          { imageSeekTime: 40, imageUrl: "https://live.sjtu.edu.cn/empty.jpg", ocrText: "   ", textKeywordList: [] },
+        ],
+      },
+    });
   return ok({});
 }
 
@@ -124,6 +141,33 @@ describe("classroom pure helpers", () => {
     expect(output.startsWith("机器学习 · 2026-09-01\n录像 ID：1\n\n")).toBe(true);
   });
 
+  it("parsePpt 去重、排序并过滤空切片", () => {
+    expect(parsePpt(null, 1)).toBeNull();
+    const ppt = parsePpt(
+      {
+        docList: [
+          { imageSeekTime: 20, imageUrl: "b", ocrText: "第二页", textKeywordList: ["B"] },
+          { imageSeekTime: 10, imageUrl: "a", ocrText: "第一页", textKeywordList: ["A"] },
+          { imageSeekTime: 30, imageUrl: "a2", ocrText: "第一页", textKeywordList: ["A"] },
+          { imageSeekTime: 40, imageUrl: "e", ocrText: "  ", textKeywordList: [] },
+        ],
+      },
+      7,
+    );
+    expect(ppt?.videoId).toBe(7);
+    expect(ppt?.slices).toEqual([
+      { seekSeconds: 10, ocrText: "第一页", keywords: ["A"], imageUrl: "a" },
+      { seekSeconds: 20, ocrText: "第二页", keywords: ["B"], imageUrl: "b" },
+    ]);
+  });
+
+  it("formatSlides 生成带时间戳与关键词文本", () => {
+    const output = formatSlides([
+      { seekSeconds: 10, ocrText: "第一页", keywords: ["A", "B"], imageUrl: "https://x/a.jpg" },
+    ]);
+    expect(output).toBe("[00:00:10.000] 关键词：A、B\n第一页\n图片：https://x/a.jpg\n");
+  });
+
   it("safeFileName 清理非法字符", () => {
     expect(safeFileName("a/b\\c:d*e?f")).toBe("a_b_c_d_e_f");
   });
@@ -148,5 +192,11 @@ describe("classroom client", () => {
     const transcript = await getTranscript(1001);
     expect(transcript?.videoId).toBe(1001);
     expect(transcript?.segments).toHaveLength(2);
+  });
+
+  it("getPpt 拉取并解析课件", async () => {
+    const ppt = await getPpt(1001);
+    expect(ppt?.videoId).toBe(1001);
+    expect(ppt?.slices).toHaveLength(2);
   });
 });
