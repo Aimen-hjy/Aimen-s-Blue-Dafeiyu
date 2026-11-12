@@ -117,4 +117,7 @@ function showBubble(text) {
   bubbleTimer = setTimeout(() => bubble.classList.add('hidden'), 2600);
 }
 
+// 主进程发来的气泡（如余额不足提醒）
+window.petAPI.onBubble((text) => showBubble(text));
+
 playIdle();

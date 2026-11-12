@@ -229,6 +229,22 @@ const pptSliceSchema = z.object({
 });
 const pptDataSchema = z.object({ docList: z.array(pptSliceSchema) });
 
+// 录屏会在课前课后顺带录进桌面（文件管理器 / WPS / PDF 阅读器等）截图，
+// OCR 出的全是系统界面文字，不是课件内容，直接按这些特征词剔除。
+const DESKTOP_NOISE_TERMS = [
+  "wps", "adobe", "acrobat", "ev录屏", "腾讯会议", "微信", "code.exe",
+  "onedrive", "vlc", "chrome", "microsoft edge", "microsoftedge",
+  "此电脑", "回收站", "快速访问", "本地磁盘", "3d 对象", "快捷方式",
+  "免费试用", "导出 pdf", "创建 pdf", "合并文件", "电子签名", "所有工具",
+  "关闭所有选项卡", "信任此文件", "转换为 pdf", "编辑 pdf", "压缩 pdf",
+  "准备表单", "填写并签名", "wps云盘", "科达互联黑板",
+];
+
+function looksLikeDesktop(ocrText: string, keywords: string[]): boolean {
+  const hay = `${ocrText} ${keywords.join(" ")}`.toLowerCase();
+  return DESKTOP_NOISE_TERMS.some((term) => hay.includes(term));
+}
+
 export function parsePpt(data: unknown, videoId: number): VideoPpt | null {
   if (data === null) return null;
   const parsed = pptDataSchema.safeParse(data);
@@ -239,14 +255,11 @@ export function parsePpt(data: unknown, videoId: number): VideoPpt | null {
   for (const raw of parsed.data.docList) {
     const ocrText = (raw.ocrText ?? "").replace(/\s+/g, " ").trim();
     if (!ocrText) continue;
+    const keywords = (raw.textKeywordList ?? []).map((item) => item.trim()).filter(Boolean);
+    if (looksLikeDesktop(ocrText, keywords)) continue;
     if (seen.has(ocrText)) continue;
     seen.add(ocrText);
-    slices.push({
-      seekSeconds: raw.imageSeekTime,
-      ocrText,
-      keywords: (raw.textKeywordList ?? []).map((item) => item.trim()).filter(Boolean),
-      imageUrl: raw.imageUrl,
-    });
+    slices.push({ seekSeconds: raw.imageSeekTime, ocrText, keywords, imageUrl: raw.imageUrl });
   }
   slices.sort((a, b) => a.seekSeconds - b.seekSeconds);
   return slices.length ? { videoId, slices } : null;

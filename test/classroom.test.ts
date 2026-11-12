@@ -168,6 +168,22 @@ describe("classroom pure helpers", () => {
     expect(output).toBe("[00:00:10.000] 关键词：A、B\n第一页\n图片：https://x/a.jpg\n");
   });
 
+  it("parsePpt 剔除课前课后录进的桌面截图", () => {
+    const ppt = parsePpt(
+      {
+        docList: [
+          { imageSeekTime: 10, imageUrl: "a", ocrText: "定义与定理", textKeywordList: ["定理"] },
+          { imageSeekTime: 20, imageUrl: "d", ocrText: "此电脑 WPS Office 回收站", textKeywordList: ["回收站"] },
+          { imageSeekTime: 30, imageUrl: "c", ocrText: "代码 Code.exe 微信", textKeywordList: ["Code.exe"] },
+        ],
+      },
+      1,
+    );
+    expect(ppt?.slices).toEqual([
+      { seekSeconds: 10, ocrText: "定义与定理", keywords: ["定理"], imageUrl: "a" },
+    ]);
+  });
+
   it("safeFileName 清理非法字符", () => {
     expect(safeFileName("a/b\\c:d*e?f")).toBe("a_b_c_d_e_f");
   });

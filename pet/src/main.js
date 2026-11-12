@@ -18,6 +18,10 @@ const CHAT_WIDTH = 360;
 const CHAT_HEIGHT = 520;
 const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-flash';
 const DSH_COMMAND = process.env.DSH_COMMAND || 'npx --yes @deepseek-ai/dsh web';
+// DeepSeek 余额提醒：低于阈值时桌宠每 5 分钟冒一次泡，否则每 30 分钟查一次。
+const BALANCE_WARN_THRESHOLD = 10;
+const BALANCE_WARN_REPEAT_MS = 5 * 60 * 1000;
+const BALANCE_CHECK_IDLE_MS = 30 * 60 * 1000;
 
 // 面板相对鱼窗口的偏移；鱼被拖动时面板按此偏移跟随，保持相对位置
 let panelOffset = null;
@@ -63,6 +67,27 @@ async function fetchDeepSeekBalance() {
   } catch (e) {
     return { ok: false, error: String((e && e.message) || e) };
   }
+}
+
+let balanceCheckTimer = null;
+
+/** 给鱼发一条气泡提示（余额不足等）。 */
+function showPetBubble(text) {
+  if (petWin && !petWin.isDestroyed()) petWin.webContents.send('pet:bubble', String(text));
+}
+
+/** 周期性检查 DeepSeek 余额：低于阈值每 5 分钟提醒一次，否则 30 分钟查一次。 */
+async function checkBalanceAndWarn() {
+  const r = await fetchDeepSeekBalance();
+  let next = BALANCE_CHECK_IDLE_MS;
+  if (r.ok) {
+    const bal = parseFloat(r.totalBalance);
+    if (Number.isFinite(bal) && bal < BALANCE_WARN_THRESHOLD) {
+      next = BALANCE_WARN_REPEAT_MS;
+      showPetBubble(`⚠️ DeepSeek 余额仅剩 ¥${bal.toFixed(2)}，请及时充值`);
+    }
+  }
+  balanceCheckTimer = setTimeout(checkBalanceAndWarn, next);
 }
 
 /** 从 env / pet config 解析 DeepSeek 平台登录态 userToken（本地秘密，绝不外发）。 */
@@ -668,6 +693,7 @@ app.whenReady().then(() => {
   createPetWindow();
   createPanelWindow();
   createChatWindow();
+  setTimeout(checkBalanceAndWarn, 5000); // 启动 5 秒后查一次余额，进入提醒循环
   console.log('[pet] 启动成功，窗口已创建');
 });
 

@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('petAPI', {
   closePanel: () => ipcRenderer.send('pet:close-panel'),
   getInfo: () => ipcRenderer.invoke('pet:get-info'),
   onRefresh: (cb) => ipcRenderer.on('panel:refresh', () => cb()),
+  onBubble: (cb) => ipcRenderer.on('pet:bubble', (_e, text) => cb(text)),
   // —— 对话窗 ——
   toggleChat: () => ipcRenderer.send('pet:toggle-chat'),
   closeChat: () => ipcRenderer.send('chat:close'),

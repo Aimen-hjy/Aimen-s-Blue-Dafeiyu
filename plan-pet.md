@@ -60,6 +60,7 @@ pet/
 - [x] DeepSeek 当日消费金额（balance 接口只有余额；平台私密接口 `usage/cost` + 浏览器登录态 `userToken` 按天累加今日金额）
 - [x] 单击鱼打开对话窗：文字聊天走 DSH（headless + `--session-id` 续聊）+ 截屏视觉问答（`desktopCapturer` 抓屏 + `deepseek-flash` 图片输入）+ 一键启动完整 DSH Web UI；右键弹菜单选状态/对话；面板/对话窗右下角把手缩放
 - [x] 对话窗历史会话：列出 `~/.dsh/sessions` 各会话（`zstd` 解压取标题/消息）点击续聊、「＋」新建对话；DeepSeek 余额/用量/视觉问答改走 `net.fetch` 绕过杀软证书拦截（修复 fetch failed）
+- [x] 余额不足提醒：启动后自动查 DeepSeek 余额，低于 ¥10 时鱼每 5 分钟冒气泡提醒充值，正常时每 30 分钟查一次
 - [ ] 校园信息提醒（上课前/作业截止前气泡）
 - [ ] 可选扩展：接入更多 dsh-pet 片段（睡觉三段接力、余额分档、工作状态、随机小动作）
 - [ ] MiniMax key（已本地保存未入库）：后续可用 `image-01` 生成额外表情/姿态帧
