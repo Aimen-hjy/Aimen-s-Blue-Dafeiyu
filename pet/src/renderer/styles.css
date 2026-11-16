@@ -20,11 +20,21 @@ body {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  cursor: grab;
   -webkit-user-drag: none;
 }
 
-#pet-video:active {
+/* —— 点击区：透明 div，只覆盖鱼身大致区域 ——
+   要改点击范围，就改下面 left / top / width / height 四个值 */
+#hitbox {
+  position: absolute;
+  left: 15%;
+  top: 10%;
+  width: 70%;
+  height: 80%;
+  cursor: grab;
+}
+
+#hitbox:active {
   cursor: grabbing;
 }
 
