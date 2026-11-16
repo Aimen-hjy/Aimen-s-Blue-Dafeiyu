@@ -146,6 +146,7 @@ function newChat() {
   historyOpen = false;
   sessionId = null;
   pendingImage = null;
+  window.petAPI.webReset(); // 同时清空 chat 模式的网页多轮会话
   messagesEl.innerHTML = '';
   addBubble('bot', '已开始新对话。');
   inputEl.focus();
@@ -199,6 +200,7 @@ function selectWorkspace(path, isDefault) {
   else localStorage.setItem('chat-workspace', path);
   sessionId = null; // 换工作区后重新开始会话
   pendingImage = null;
+  window.petAPI.webReset(); // 换工作区也清空网页多轮会话
   addBubble('bot', isDefault ? '已切换到默认工作区。' : '已切换到工作区：' + path);
   inputEl.focus();
 }

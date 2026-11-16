@@ -167,16 +167,49 @@ async function sendCompletion(accessToken, sessionId, prompt, powResp) {
   return out;
 }
 
-/** 用 user_token 走网页端发一条消息，返回完整回复文本（非流式）。 */
+// —— 多轮会话状态 ——
+let sessionId = null;
+let history = []; // [{ role: 'user' | 'assistant', text }]
+
+/** 把历史消息拼成网页端的 prompt（首条不加前缀，助手带 <｜end of sentence｜>）。 */
+function buildPrompt(messages) {
+  const merged = [];
+  for (const m of messages) {
+    const last = merged[merged.length - 1];
+    if (last && last.role === m.role) last.text += '\n\n' + m.text;
+    else merged.push({ role: m.role, text: m.text });
+  }
+  return merged
+    .map((b, i) => {
+      if (b.role === 'assistant') return `<｜Assistant｜>${b.text}<｜end of sentence｜>`;
+      if (i === 0) return b.text;
+      return `<｜User｜>${b.text}`;
+    })
+    .join('');
+}
+
+/** 清空多轮会话（新建对话）。 */
+function resetWebChat() {
+  sessionId = null;
+  history = [];
+}
+
+/** 用 user_token 走网页端发一条消息，返回完整回复文本（多轮连续，非流式）。 */
 async function webChat(userToken, prompt) {
   const accessToken = await acquireAccessToken(userToken);
-  const sessionId = await createSession(accessToken);
+  if (!sessionId) {
+    sessionId = await createSession(accessToken);
+    history = [];
+  }
+  history.push({ role: 'user', text: prompt });
+  const fullPrompt = buildPrompt(history);
   const challenge = await getChallenge(accessToken);
   const powResp = powHeader(challenge);
-  const text = await sendCompletion(accessToken, sessionId, prompt, powResp);
+  const text = await sendCompletion(accessToken, sessionId, fullPrompt, powResp);
   const cleaned = text.replace(/FINISHED/g, '').trim();
   if (!cleaned) throw new Error('未读取到回复');
+  history.push({ role: 'assistant', text: cleaned });
   return cleaned;
 }
 
-module.exports = { webChat };
+module.exports = { webChat, resetWebChat };

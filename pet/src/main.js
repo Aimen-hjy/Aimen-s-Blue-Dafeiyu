@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const crypto = require('node:crypto');
 const { spawn, spawnSync } = require('node:child_process');
-const { webChat } = require('./deepseek-web');
+const { webChat, resetWebChat } = require('./deepseek-web');
 
 let petWin = null;
 let panelWin = null;
@@ -150,20 +150,20 @@ async function checkBalanceAndWarn() {
 
 /** 从 env / profile 配置 / pet config 解析 DeepSeek 平台登录态 userToken（本地秘密，绝不外发）。 */
 function resolveDeepSeekUserToken() {
-  if (process.env.DEEPSEEK_USER_TOKEN) return normalizeUserToken(process.env.DEEPSEEK_USER_TOKEN);
+  if (process.env.DEEPSEEK_USER_TOKEN) return normalizeToken(process.env.DEEPSEEK_USER_TOKEN);
   const campusCfg = readCampusConfig();
   if (campusCfg && campusCfg.deepseek && campusCfg.deepseek.userToken) {
-    return normalizeUserToken(String(campusCfg.deepseek.userToken));
+    return normalizeToken(String(campusCfg.deepseek.userToken));
   }
   try {
     const cfg = JSON.parse(fs.readFileSync(path.join(__dirname, 'config.json'), 'utf8'));
-    if (cfg.deepseekUserToken) return normalizeUserToken(String(cfg.deepseekUserToken));
+    if (cfg.deepseekUserToken) return normalizeToken(String(cfg.deepseekUserToken));
   } catch {}
   return null;
 }
 
-/** userToken 可能被存成 {"value":"...","__version":"0"} 或直接是 token 字符串。 */
-function normalizeUserToken(v) {
+/** token 可能被存成 {"value":"...","__version":"0"} 或直接是字符串。 */
+function normalizeToken(v) {
   v = String(v).trim();
   try {
     const o = JSON.parse(v);
@@ -379,10 +379,10 @@ function openDsh() {
 
 // —— chat 模式：走 chat.deepseek.com 网页端内部接口 + PoW（不调用官方 API）——
 function resolveChatToken() {
-  if (process.env.DEEPSEEK_CHAT_TOKEN) return process.env.DEEPSEEK_CHAT_TOKEN.trim();
+  if (process.env.DEEPSEEK_CHAT_TOKEN) return normalizeToken(process.env.DEEPSEEK_CHAT_TOKEN);
   const campusCfg = readCampusConfig();
   if (campusCfg && campusCfg.deepseek && campusCfg.deepseek.chatToken) {
-    return String(campusCfg.deepseek.chatToken).trim();
+    return normalizeToken(String(campusCfg.deepseek.chatToken));
   }
   return null;
 }
@@ -878,6 +878,10 @@ ipcMain.handle('chat:screenshot', () => captureScreen());
 ipcMain.handle('chat:open-dsh', () => openDsh());
 // chat 模式：走 chat.deepseek.com 网页端内部接口，不调用官方 API
 ipcMain.handle('chat:web-send', (_e, text) => webChatSend(String(text || '')));
+ipcMain.handle('chat:web-reset', () => {
+  resetWebChat();
+  return { ok: true };
+});
 // 历史对话：列出会话 / 读取某次会话的消息
 ipcMain.handle('chat:list-sessions', () => listDshSessions());
 ipcMain.handle('chat:load-session', (_e, sessionId) => loadDshSession(sessionId));

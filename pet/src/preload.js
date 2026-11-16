@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('petAPI', {
   screenshot: () => ipcRenderer.invoke('chat:screenshot'),
   openDsh: () => ipcRenderer.invoke('chat:open-dsh'),
   webSend: (text) => ipcRenderer.invoke('chat:web-send', text),
+  webReset: () => ipcRenderer.invoke('chat:web-reset'),
   listSessions: () => ipcRenderer.invoke('chat:list-sessions'),
   loadSession: (sessionId) => ipcRenderer.invoke('chat:load-session', sessionId),
   listWorkspaces: () => ipcRenderer.invoke('chat:list-workspaces'),
