@@ -28,6 +28,10 @@ const BALANCE_CHECK_IDLE_MS = 30 * 60 * 1000;
 // 面板相对鱼窗口的偏移；鱼被拖动时面板按此偏移跟随，保持相对位置
 let panelOffset = null;
 
+// 面板/对话窗当前尺寸：只在缩放时更新；拖动/重开直接引用，避免 getSize() 的 DIP 舍入累积撑大窗口
+let panelSize = { w: PANEL_WIDTH, h: PANEL_HEIGHT };
+let chatSize = { w: CHAT_WIDTH, h: CHAT_HEIGHT };
+
 // —— 多账号 profile：与 campus-agent 的 config/state 路径保持一致 ——
 function activeProfileName() {
   try {
@@ -729,7 +733,7 @@ function togglePanel() {
   }
   const [x, y] = petWin.getPosition();
   const [w, h] = petWin.getSize();
-  const [pw, ph] = panelWin.getSize(); // 保留用户缩放后的尺寸
+  const { w: pw, h: ph } = panelSize; // 保留用户缩放后的尺寸
   const display = screen.getDisplayMatching({ x, y, width: w, height: h });
   const wa = display.workArea;
   let px;
@@ -784,7 +788,7 @@ function showChat() {
   if (!chatWin || !petWin) return;
   const [x, y] = petWin.getPosition();
   const [w, h] = petWin.getSize();
-  const [cw, ch] = chatWin.getSize(); // 保留用户缩放后的尺寸
+  const { w: cw, h: ch } = chatSize; // 保留用户缩放后的尺寸
   const display = screen.getDisplayMatching({ x, y, width: w, height: h });
   const wa = display.workArea;
   let cx = x + w + 12;
@@ -825,7 +829,7 @@ ipcMain.on('pet:move', (_e, x, y) => {
   if (petWin) petWin.setBounds({ x: nx, y: ny, width: PET_WIDTH, height: PET_HEIGHT });
   // 面板跟随鱼，保持相对位置（保留面板缩放后的尺寸）
   if (panelWin && panelWin.isVisible() && panelOffset) {
-    const [pw, ph] = panelWin.getSize();
+    const { w: pw, h: ph } = panelSize;
     panelWin.setBounds({ x: nx + panelOffset.dx, y: ny + panelOffset.dy, width: pw, height: ph });
   }
 });
@@ -834,7 +838,7 @@ ipcMain.on('panel:move', (_e, x, y) => {
   const nx = Math.round(x);
   const ny = Math.round(y);
   if (panelWin) {
-    const [w, h] = panelWin.getSize(); // 拖动只改位置，保留缩放后的尺寸
+    const { w, h } = panelSize; // 拖动只改位置，保留缩放后的尺寸
     panelWin.setBounds({ x: nx, y: ny, width: w, height: h });
   }
   // 更新相对偏移，之后鱼移动时面板按新位置跟随
@@ -857,7 +861,7 @@ ipcMain.on('chat:close', () => {
 ipcMain.handle('chat:get-position', () => (chatWin ? chatWin.getPosition() : [0, 0]));
 ipcMain.on('chat:move', (_e, x, y) => {
   if (!chatWin) return;
-  const [w, h] = chatWin.getSize(); // 拖动只改位置，保留用户缩放后的尺寸
+  const { w, h } = chatSize; // 拖动只改位置，保留用户缩放后的尺寸
   chatWin.setBounds({ x: Math.round(x), y: Math.round(y), width: w, height: h });
 });
 ipcMain.on('chat:send', (_e, text, sessionId, workspace) => {
@@ -903,16 +907,18 @@ ipcMain.on('pet:context-menu', () => {
   ]);
   menu.popup({ window: petWin });
 });
-// 窗口缩放（右下角把手拖动）
+// 窗口缩放（右下角把手拖动）：只在这里更新记录的尺寸，供拖动/重开引用
 ipcMain.on('panel:resize', (_e, w, h) => {
   if (!panelWin) return;
   const [x, y] = panelWin.getPosition();
-  panelWin.setBounds({ x, y, width: Math.max(300, Math.round(w)), height: Math.max(360, Math.round(h)) });
+  panelSize = { w: Math.max(300, Math.round(w)), h: Math.max(360, Math.round(h)) };
+  panelWin.setBounds({ x, y, width: panelSize.w, height: panelSize.h });
 });
 ipcMain.handle('panel:get-size', () => (panelWin ? panelWin.getSize() : [0, 0]));
 ipcMain.on('chat:resize', (_e, w, h) => {
   if (!chatWin) return;
   const [x, y] = chatWin.getPosition();
-  chatWin.setBounds({ x, y, width: Math.max(300, Math.round(w)), height: Math.max(400, Math.round(h)) });
+  chatSize = { w: Math.max(300, Math.round(w)), h: Math.max(400, Math.round(h)) };
+  chatWin.setBounds({ x, y, width: chatSize.w, height: chatSize.h });
 });
 ipcMain.handle('chat:get-size', () => (chatWin ? chatWin.getSize() : [0, 0]));
