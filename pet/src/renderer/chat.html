@@ -30,18 +30,13 @@
       #header {
         display: flex;
         align-items: center;
-        justify-content: space-between;
+        justify-content: flex-end;
         gap: 6px;
         padding: 10px 12px;
         background: #2563eb;
         color: #ffffff;
         font-weight: 600;
         cursor: move;
-      }
-      #header .title {
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
       }
       #header .actions {
         display: flex;
@@ -96,6 +91,26 @@
         display: block;
       }
       #history-panel::-webkit-scrollbar {
+        display: none;
+      }
+      #workspace-panel {
+        position: absolute;
+        top: 42px;
+        left: 8px;
+        right: 8px;
+        max-height: 62%;
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+        overflow-y: auto;
+        z-index: 30;
+        display: none;
+      }
+      #workspace-panel.on {
+        display: block;
+      }
+      #workspace-panel::-webkit-scrollbar {
         display: none;
       }
       .hitem {
@@ -222,8 +237,8 @@
   <body>
     <div id="chat">
       <div id="header">
-        <span class="title">大肥鱼 · 和 DSH 聊天</span>
         <div class="actions">
+          <button id="workspace" title="选择 DSH 工作区">🗂 工作区</button>
           <button id="history" title="查看历史对话">🕘 历史</button>
           <button id="new-chat" title="新建对话">＋</button>
           <button id="open-dsh" title="打开完整 DSH Web UI">🚀 DSH</button>
@@ -232,6 +247,7 @@
         </div>
       </div>
       <div id="history-panel"></div>
+      <div id="workspace-panel"></div>
       <div id="hint"></div>
       <div id="messages"></div>
       <div id="input-row">

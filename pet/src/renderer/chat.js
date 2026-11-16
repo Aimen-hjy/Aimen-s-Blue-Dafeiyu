@@ -9,6 +9,8 @@ const hintEl = document.getElementById('hint');
 const historyBtn = document.getElementById('history');
 const newChatBtn = document.getElementById('new-chat');
 const historyPanel = document.getElementById('history-panel');
+const workspaceBtn = document.getElementById('workspace');
+const workspacePanel = document.getElementById('workspace-panel');
 
 let sessionId = null; // DSH 会话 id，续聊用
 let pendingImage = null; // 截屏后待发送的 data URL
@@ -16,6 +18,8 @@ let busy = false;
 let streamingEl = null; // 正在流式输出的气泡
 let streamText = '';
 let historyOpen = false; // 历史下拉是否展开
+let workspaceOpen = false; // 工作区下拉是否展开
+let workspace = localStorage.getItem('chat-workspace') || ''; // '' = 默认工作区
 
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({
@@ -144,6 +148,58 @@ function newChat() {
   inputEl.focus();
 }
 
+async function toggleWorkspace() {
+  if (!workspaceOpen) {
+    workspacePanel.innerHTML = '<div class="hitem"><span class="hmeta">加载中…</span></div>';
+    workspacePanel.classList.add('on');
+    workspaceOpen = true;
+    let res = null;
+    try {
+      res = await window.petAPI.listWorkspaces();
+    } catch (e) {
+      res = { ok: false, error: String(e) };
+    }
+    if (res && res.ok && Array.isArray(res.workspaces)) {
+      const items = res.workspaces
+        .map((w) => {
+          const cur =
+            (w.isDefault && !workspace) || (!w.isDefault && w.path === workspace) ? ' current' : '';
+          const tag = w.isDefault ? '（默认）' : '';
+          return (
+            `<div class="hitem${cur}" data-path="${esc(w.path)}" data-def="${w.isDefault ? '1' : '0'}">` +
+            `<span class="htitle">${esc(w.path)}</span>` +
+            `<span class="hmeta">${tag}</span></div>`
+          );
+        })
+        .join('');
+      workspacePanel.innerHTML =
+        items || '<div class="hitem"><span class="hmeta">暂无工作区</span></div>';
+      workspacePanel.querySelectorAll('.hitem[data-path]').forEach((el) => {
+        el.addEventListener('click', () => selectWorkspace(el.dataset.path, el.dataset.def === '1'));
+      });
+    } else {
+      workspacePanel.innerHTML =
+        '<div class="hitem"><span class="hmeta">' + esc((res && res.error) || '读取失败') + '</span></div>';
+    }
+  } else {
+    workspacePanel.classList.remove('on');
+    workspaceOpen = false;
+  }
+}
+
+function selectWorkspace(path, isDefault) {
+  workspacePanel.classList.remove('on');
+  workspaceOpen = false;
+  if (busy) return;
+  workspace = isDefault ? '' : path;
+  if (isDefault) localStorage.removeItem('chat-workspace');
+  else localStorage.setItem('chat-workspace', path);
+  sessionId = null; // 换工作区后重新开始会话
+  pendingImage = null;
+  addBubble('bot', isDefault ? '已切换到默认工作区。' : '已切换到工作区：' + path);
+  inputEl.focus();
+}
+
 async function send() {
   if (busy) return;
   const q = inputEl.value.trim();
@@ -178,7 +234,7 @@ async function send() {
     // 文字聊天：走 DSH（session 连续），流式回显
     streamText = '';
     streamingEl = addStreamingBubble();
-    window.petAPI.chatSend(question, sessionId);
+    window.petAPI.chatSend(question, sessionId, workspace);
   }
 }
 
@@ -188,10 +244,15 @@ inputEl.addEventListener('keydown', (e) => {
 });
 historyBtn.addEventListener('click', toggleHistory);
 newChatBtn.addEventListener('click', newChat);
+workspaceBtn.addEventListener('click', toggleWorkspace);
 document.addEventListener('click', (e) => {
   if (historyOpen && !e.target.closest('#history') && !e.target.closest('#history-panel')) {
     historyPanel.classList.remove('on');
     historyOpen = false;
+  }
+  if (workspaceOpen && !e.target.closest('#workspace') && !e.target.closest('#workspace-panel')) {
+    workspacePanel.classList.remove('on');
+    workspaceOpen = false;
   }
 });
 

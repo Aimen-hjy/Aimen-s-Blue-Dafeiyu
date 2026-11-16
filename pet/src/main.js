@@ -381,7 +381,7 @@ function openDsh() {
  * 流式回传 text 事件给 onToken，结束时 onDone 带上 sessionId（下次 --session-id 续聊）。
  * 视觉问答不走这里（DSH CLI 只吃文本），截图用 callDeepSeek 直连 deepseek-flash。
  */
-function runDshChat(text, sessionId, onToken, onDone) {
+function runDshChat(text, sessionId, workspace, onToken, onDone) {
   const key = resolveDeepSeekKey();
   if (!key) {
     onDone({ ok: false, error: '未找到 DeepSeek API Key' });
@@ -390,10 +390,13 @@ function runDshChat(text, sessionId, onToken, onDone) {
   // Windows 上 spawn .cmd 必须 shell:true（否则抛 EINVAL）；任务文本走 stdin，避免进入 shell 命令行
   const cmd = ['npx', '--yes', '@deepseek-ai/dsh', '--profile', 'headless', '--json',
     ...(sessionId ? ['--session-id', sessionId] : []), '-'].join(' ');
+  // 工作区 = DSH 的工作目录（决定会话存到哪个 workspace）；非法目录回退到当前目录。
+  const cwd = workspace && fs.existsSync(workspace) ? workspace : undefined;
   let child;
   try {
     child = spawn(cmd, {
       shell: true,
+      cwd,
       env: { ...process.env, DEEPSEEK_API_KEY: key },
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
@@ -482,6 +485,26 @@ function decodeWsDir(name) {
   if (/^[A-Za-z]-/.test(s)) s = s[0] + ':' + s.slice(2).replace(/-/g, '\\');
   else s = s.replace(/-/g, '\\');
   return s;
+}
+
+/** 枚举可选 DSH 工作区：当前目录（默认）+ ~/.dsh/sessions 里已出现过的历史工作区。 */
+function listDshWorkspaces() {
+  const cwd = process.cwd();
+  const paths = new Set([cwd]);
+  try {
+    const root = path.join(os.homedir(), '.dsh', 'sessions');
+    for (const d of fs.readdirSync(root, { withFileTypes: true })) {
+      if (!d.isDirectory()) continue;
+      const p = decodeWsDir(d.name);
+      if (p) paths.add(p);
+    }
+  } catch {}
+  const workspaces = [...paths].map((p) => ({
+    path: p,
+    label: p === cwd ? `默认：${p}` : p,
+    isDefault: p === cwd,
+  }));
+  return { ok: true, workspaces };
 }
 
 /** 解压会话文件为文本；缺少 zstd 或解压失败时返回 null。 */
@@ -801,11 +824,12 @@ ipcMain.handle('chat:get-position', () => (chatWin ? chatWin.getPosition() : [0,
 ipcMain.on('chat:move', (_e, x, y) => {
   if (chatWin) chatWin.setBounds({ x: Math.round(x), y: Math.round(y), width: CHAT_WIDTH, height: CHAT_HEIGHT });
 });
-ipcMain.on('chat:send', (_e, text, sessionId) => {
+ipcMain.on('chat:send', (_e, text, sessionId, workspace) => {
   if (!chatWin) return;
   runDshChat(
     String(text || ''),
     sessionId || null,
+    workspace || null,
     (token) => chatWin.webContents.send('chat:token', token),
     (result) => chatWin.webContents.send('chat:done', result)
   );
@@ -827,6 +851,8 @@ ipcMain.handle('chat:open-dsh', () => openDsh());
 // 历史对话：列出会话 / 读取某次会话的消息
 ipcMain.handle('chat:list-sessions', () => listDshSessions());
 ipcMain.handle('chat:load-session', (_e, sessionId) => loadDshSession(sessionId));
+// 选择 DSH 工作区（决定新对话存到哪个 workspace）
+ipcMain.handle('chat:list-workspaces', () => listDshWorkspaces());
 // 右键菜单：选择打开状态面板还是对话窗
 ipcMain.on('pet:context-menu', () => {
   const menu = Menu.buildFromTemplate([
