@@ -57,6 +57,7 @@ const PROFILE_USAGE = [
   "  remove <名字>           删除一个非当前 profile",
   "  set-deepseek <sk-...>   登记当前 profile 的 DeepSeek API Key",
   "  set-user-token <token>  登记当前 profile 的 DeepSeek 平台 userToken",
+  "  set-chat-token <token>  登记当前 profile 的 chat.deepseek.com 网页 user_token",
 ].join("\n");
 
 function currentProfileName(): string {
@@ -73,6 +74,7 @@ function describeConfig() {
     canvas: cfg.canvas?.accessToken?.trim() ? "已配置" : "未配置",
     deepseekApiKey: ds?.apiKey?.trim() ? `已配置（…${ds.apiKey.trim().slice(-4)}）` : "未配置",
     deepseekUserToken: ds?.userToken?.trim() ? "已配置" : "未配置",
+    deepseekChatToken: ds?.chatToken?.trim() ? "已配置" : "未配置",
   };
 }
 
@@ -126,6 +128,7 @@ export async function runProfile(): Promise<void> {
       console.log(`Canvas token：${info.canvas}`);
       console.log(`DeepSeek API Key：${info.deepseekApiKey}`);
       console.log(`DeepSeek 平台 userToken：${info.deepseekUserToken}`);
+      console.log(`DeepSeek 网页 chat token：${info.deepseekChatToken}`);
       return;
     }
     case "remove": {
@@ -142,6 +145,7 @@ export async function runProfile(): Promise<void> {
       config.deepseek = {
         apiKey: arg,
         userToken: config.deepseek?.userToken ?? "",
+        chatToken: config.deepseek?.chatToken ?? "",
       };
       saveConfig(config);
       console.log("已登记 DeepSeek API Key 到当前 profile");
@@ -153,9 +157,22 @@ export async function runProfile(): Promise<void> {
       config.deepseek = {
         apiKey: config.deepseek?.apiKey ?? "",
         userToken: arg,
+        chatToken: config.deepseek?.chatToken ?? "",
       };
       saveConfig(config);
       console.log("已登记 DeepSeek 平台 userToken 到当前 profile");
+      return;
+    }
+    case "set-chat-token": {
+      if (!arg) throw new Error("缺少 token：campus-agent profile set-chat-token <chat.deepseek.com 的 user_token>");
+      const config = loadConfig();
+      config.deepseek = {
+        apiKey: config.deepseek?.apiKey ?? "",
+        userToken: config.deepseek?.userToken ?? "",
+        chatToken: arg,
+      };
+      saveConfig(config);
+      console.log("已登记 chat.deepseek.com 网页 user_token 到当前 profile");
       return;
     }
     default:

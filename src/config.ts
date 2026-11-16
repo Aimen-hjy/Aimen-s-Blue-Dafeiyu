@@ -53,6 +53,8 @@ export const DeepSeekConfig = z.object({
   apiKey: z.string().default(""),
   /** 平台私密接口的登录态 userToken（用于按天查询消费金额）。 */
   userToken: z.string().default(""),
+  /** chat.deepseek.com 网页端的 user_token（localStorage），用于 chat 模式走网页内部接口。 */
+  chatToken: z.string().default(""),
 });
 
 export const ConfigSchema = z.object({

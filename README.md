@@ -80,6 +80,7 @@ campus-agent profile add 张三                     # 新建并切换到该 prof
 campus-agent login                               # 在该 profile 下登录 jAccount
 campus-agent profile set-deepseek <sk-...>        # 登记该 profile 的 DeepSeek API Key
 campus-agent profile set-user-token <token>       # （可选）登记平台 userToken，用于按天消费金额
+campus-agent profile set-chat-token <token>       # （可选）登记 chat.deepseek.com 网页 user_token（桌宠 chat 模式用）
 campus-agent profile use default                  # 切回默认配置
 campus-agent profile list                         # 列出所有 profile，* 标注当前
 campus-agent profile show                         # 查看当前 profile 及已登记字段

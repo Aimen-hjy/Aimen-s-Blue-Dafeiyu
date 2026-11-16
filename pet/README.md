@@ -21,7 +21,7 @@ npm start
 - **右键**：弹出菜单，选择打开「状态面板」或「对话」
 - **拖拽**：跟随鼠标移动，鱼随方向轻微倾斜（保持待机画面，不改变大小）
 - **状态面板**：今日课程 + Canvas 任务 + DeepSeek 余额 / 当日消费金额；拖动标题栏移动，拖动鱼时面板保持相对位置跟随，点 × 关闭
-- **对话窗**：文字聊天走 **DSH**（headless 模式，会话连续）；点顶部「模式」图标在 **DSH（API）** 与 **Chat（DeepSeek 网页端）** 之间切换——chat 模式用隐藏浏览器驱动 `chat.deepseek.com` 发消息读回复、不调用 API（首次需登录一次）；点「🗂 工作区」选择 DSH 工作目录（决定新对话存到哪个 workspace）、「🕘 历史」查看/续聊历史会话、「＋」新建对话；点「📸 截屏」截取当前屏幕并针对屏幕提问（视觉问答，走 `deepseek-flash`）；点「🚀 DSH」启动完整 DSH Web UI（`http://127.0.0.1:3080`）
+- **对话窗**：文字聊天走 **DSH**（headless 模式，会话连续）；点顶部「模式」图标在 **DSH（API）** 与 **Chat（DeepSeek 网页端）** 之间切换——chat 模式走 `chat.deepseek.com` 网页内部接口（`user_token` + PoW，不调用官方 API，需先 `campus-agent profile set-chat-token`）；点「🗂 工作区」选择 DSH 工作目录（决定新对话存到哪个 workspace）、「🕘 历史」查看/续聊历史会话、「＋」新建对话；点「📸 截屏」截取当前屏幕并针对屏幕提问（视觉问答，走 `deepseek-flash`）；点「🚀 DSH」启动完整 DSH Web UI（`http://127.0.0.1:3080`）
 - **窗口缩放**：状态面板 / 对话窗右下角有把手，拖动即可缩放（面板内容可滚轮滚动，右侧不显示滑动条）
 - **余额提醒**：启动后自动查 DeepSeek 余额，低于 ¥10 时鱼每 5 分钟冒一次气泡提醒充值（正常时每 30 分钟查一次）
 
@@ -39,6 +39,8 @@ npm start
 > 所有 DeepSeek 网络请求（余额 / 当日消费 / 视觉问答）统一走 Electron `net.fetch`（Chromium 网络栈、信任系统证书库），而非 Node 的 `fetch`。原因：卡巴斯基等杀软的 HTTPS 扫描会用自签根证书做中间人，Node `fetch` 不信任它 → 报 `fetch failed`（`SELF_SIGNED_CERT_IN_CHAIN`）；`net.fetch` 与浏览器行为一致、可正常通过。
 
 > `deepseekUserToken` 是浏览器登录 `platform.deepseek.com` 后 localStorage 里的 `userToken`（形如 `{"value":"...","__version":"0"}`，取其中 `value`）。公开 API 只有余额，没有逐日金额；该接口是平台私密接口，token 过期后需重新到浏览器里取一次。推荐用 `campus-agent profile set-user-token` 存入当前 profile（随 profile 切换），也可存 `pet/src/config.json`（gitignore，纯本地）。
+
+> `chatToken` 是浏览器登录 `chat.deepseek.com` 后 localStorage 里的 `user_token`（直接是字符串）。chat 模式走网页内部接口（`/api/v0/chat/completion` + `X-Ds-Pow-Response` PoW，参考 `Wu-jiyan/deepseek-reverse-api`）不调用官方 API；token 过期后需重新到浏览器里取一次。用 `campus-agent profile set-chat-token <token>` 存入当前 profile。
 
 ## 素材
 
