@@ -19,7 +19,7 @@ contextBridge.exposeInMainWorld('petAPI', {
   chatAskImage: (dataUrl, text) => ipcRenderer.invoke('chat:ask-image', dataUrl, text),
   screenshot: () => ipcRenderer.invoke('chat:screenshot'),
   openDsh: () => ipcRenderer.invoke('chat:open-dsh'),
-  openDeepseekWeb: () => ipcRenderer.invoke('chat:open-deepseek-web'),
+  webSend: (text) => ipcRenderer.invoke('chat:web-send', text),
   listSessions: () => ipcRenderer.invoke('chat:list-sessions'),
   loadSession: (sessionId) => ipcRenderer.invoke('chat:load-session', sessionId),
   listWorkspaces: () => ipcRenderer.invoke('chat:list-workspaces'),

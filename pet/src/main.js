@@ -376,6 +376,96 @@ function openDsh() {
   }
 }
 
+// —— chat 模式：用隐藏浏览器驱动 DeepSeek 网页端（不调用 API）——
+let webChatWin = null;
+
+function getWebChatWin() {
+  if (webChatWin && !webChatWin.isDestroyed()) return webChatWin;
+  webChatWin = new BrowserWindow({
+    width: 1100,
+    height: 800,
+    show: false,
+    webPreferences: {
+      partition: 'persist:deepseek-web', // 登录态持久化，登录一次即可
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+  webChatWin.loadURL('https://chat.deepseek.com').catch(() => {});
+  return webChatWin;
+}
+
+/**
+ * 在 chat.deepseek.com 页面内执行的脚本：填输入框 → 回车发送 → 等回复稳定 → 返回文本。
+ * 选择器集中在这几行；DeepSeek 改版导致失效时优先改这里。
+ */
+function webChatScript(text) {
+  const t = JSON.stringify(String(text));
+  return `(async () => {
+    var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+
+    // 等输入框出现（SPA 渲染可能较慢；最多 15s，仍没有则判定为未登录页）
+    var input = null;
+    var waitUntil = Date.now() + 15000;
+    while (!input && Date.now() < waitUntil) {
+      input = document.querySelector('textarea');
+      if (!input) await sleep(500);
+    }
+    if (!input) return { ok: false, error: 'NEED_LOGIN' };
+
+    var proto = input.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(proto, 'value').set.call(input, ${t});
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await sleep(80);
+    var keyOpts = { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true };
+    input.dispatchEvent(new KeyboardEvent('keydown', keyOpts));
+    input.dispatchEvent(new KeyboardEvent('keyup', keyOpts));
+
+    function lastReply() {
+      var sels = ['[class*="markdown"]', '[class*="message"]', '[class*="assistant"]'];
+      for (var i = 0; i < sels.length; i++) {
+        var els = document.querySelectorAll(sels[i]);
+        var el = els[els.length - 1];
+        if (el && el.innerText && el.innerText.trim()) return el.innerText.trim();
+      }
+      return '';
+    }
+
+    await sleep(1500); // 等第一条 token 出现
+    var deadline = Date.now() + 90000;
+    var last = lastReply();
+    var stable = 0;
+    while (Date.now() < deadline) {
+      await sleep(800);
+      var cur = lastReply();
+      if (cur === last) { stable += 800; } else { stable = 0; last = cur; }
+      if (last && stable >= 3000) break;
+    }
+    return { ok: true, text: last };
+  })()`;
+}
+
+/** 走网页端发一条消息并读回完整回复（非流式）。 */
+async function webChatSend(text) {
+  const win = getWebChatWin();
+  try {
+    await win.loadURL('https://chat.deepseek.com');
+  } catch {}
+  await new Promise((r) => setTimeout(r, 1200)); // 等页面起跑，剩余等待交给页面内脚本
+  try {
+    const r = await win.webContents.executeJavaScript(webChatScript(text), true);
+    if (r && r.error === 'NEED_LOGIN') {
+      win.show(); // 让用户登录一次，之后会话持久化
+      return { ok: false, error: '请先在打开的窗口中登录 DeepSeek，登录后会自动记住，再发一次即可' };
+    }
+    if (r && r.ok && r.text) return { ok: true, text: r.text };
+    return { ok: false, error: (r && r.error) || '未读取到回复' };
+  } catch (e) {
+    return { ok: false, error: String((e && e.message) || e) };
+  }
+}
+
 /**
  * 用 DSH（DeepSeek Harness）headless 模式跑一次对话：`dsh --profile headless --json`。
  * 流式回传 text 事件给 onToken，结束时 onDone 带上 sessionId（下次 --session-id 续聊）。
@@ -848,11 +938,8 @@ ipcMain.handle('chat:ask-image', (_e, dataUrl, text) => {
 });
 ipcMain.handle('chat:screenshot', () => captureScreen());
 ipcMain.handle('chat:open-dsh', () => openDsh());
-// chat 模式：不调用 API，直接打开 DeepSeek 网页端聊天
-ipcMain.handle('chat:open-deepseek-web', () => {
-  shell.openExternal('https://chat.deepseek.com').catch(() => {});
-  return { ok: true };
-});
+// chat 模式：用隐藏浏览器驱动 DeepSeek 网页端，不调用 API
+ipcMain.handle('chat:web-send', (_e, text) => webChatSend(String(text || '')));
 // 历史对话：列出会话 / 读取某次会话的消息
 ipcMain.handle('chat:list-sessions', () => listDshSessions());
 ipcMain.handle('chat:load-session', (_e, sessionId) => loadDshSession(sessionId));

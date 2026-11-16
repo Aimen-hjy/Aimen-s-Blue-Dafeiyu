@@ -233,14 +233,28 @@ async function send() {
   const q = inputEl.value.trim();
   const img = pendingImage;
 
-  // chat 模式 + 纯文字：不调用 API，直接打开 DeepSeek 网页端
+  // chat 模式 + 纯文字：不调用 API，用隐藏浏览器驱动 DeepSeek 网页端
   if (mode === 'chat' && !img) {
     if (!q) return;
+    addBubble('user', q);
     inputEl.value = '';
     setHint('');
-    addBubble('bot', '已打开 DeepSeek 网页聊天（chat 模式，不调用 API）。若未弹出请访问 chat.deepseek.com');
-    window.petAPI.openDeepseekWeb();
-    inputEl.focus();
+    busy = true;
+    sendBtn.disabled = true;
+    streamingEl = addStreamingBubble();
+    streamingEl.textContent = '大肥鱼正在 DeepSeek 网页里聊…';
+    try {
+      const res = await window.petAPI.webSend(q);
+      if (res && res.ok && res.text) streamingEl.textContent = res.text;
+      else streamingEl.textContent = '（出错了：' + ((res && res.error) || '未知错误') + '）';
+    } catch (e) {
+      streamingEl.textContent = '（调用失败：' + String(e) + '）';
+    } finally {
+      streamingEl = null;
+      busy = false;
+      sendBtn.disabled = false;
+      inputEl.focus();
+    }
     return;
   }
 
