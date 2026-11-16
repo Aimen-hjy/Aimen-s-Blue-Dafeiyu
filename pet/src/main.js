@@ -848,6 +848,11 @@ ipcMain.handle('chat:ask-image', (_e, dataUrl, text) => {
 });
 ipcMain.handle('chat:screenshot', () => captureScreen());
 ipcMain.handle('chat:open-dsh', () => openDsh());
+// chat 模式：不调用 API，直接打开 DeepSeek 网页端聊天
+ipcMain.handle('chat:open-deepseek-web', () => {
+  shell.openExternal('https://chat.deepseek.com').catch(() => {});
+  return { ok: true };
+});
 // 历史对话：列出会话 / 读取某次会话的消息
 ipcMain.handle('chat:list-sessions', () => listDshSessions());
 ipcMain.handle('chat:load-session', (_e, sessionId) => loadDshSession(sessionId));

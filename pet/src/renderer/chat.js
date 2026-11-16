@@ -11,6 +11,8 @@ const newChatBtn = document.getElementById('new-chat');
 const historyPanel = document.getElementById('history-panel');
 const workspaceBtn = document.getElementById('workspace');
 const workspacePanel = document.getElementById('workspace-panel');
+const modeBtn = document.getElementById('mode');
+const modeIcon = document.getElementById('mode-icon');
 
 let sessionId = null; // DSH 会话 id，续聊用
 let pendingImage = null; // 截屏后待发送的 data URL
@@ -20,6 +22,7 @@ let streamText = '';
 let historyOpen = false; // 历史下拉是否展开
 let workspaceOpen = false; // 工作区下拉是否展开
 let workspace = localStorage.getItem('chat-workspace') || ''; // '' = 默认工作区
+let mode = localStorage.getItem('chat-mode') || 'dsh'; // 'dsh'=走 API；'chat'=走 DeepSeek 网页端
 
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({
@@ -200,10 +203,47 @@ function selectWorkspace(path, isDefault) {
   inputEl.focus();
 }
 
+function applyMode() {
+  if (mode === 'chat') {
+    modeIcon.src = '../../assets/chat.svg';
+    modeBtn.title = '当前：Chat 网页模式（不调用 API），点此切回 DSH 模式';
+    inputEl.placeholder = 'chat 模式：点发送打开 DeepSeek 网页聊天';
+  } else {
+    modeIcon.src = '../../assets/dsh.svg';
+    modeBtn.title = '当前：DSH 模式（调用 API），点此切到 Chat 网页模式';
+    inputEl.placeholder = '问点什么…（Enter 发送）';
+  }
+}
+
+function toggleMode() {
+  mode = mode === 'chat' ? 'dsh' : 'chat';
+  localStorage.setItem('chat-mode', mode);
+  applyMode();
+  addBubble(
+    'bot',
+    mode === 'chat'
+      ? '已切换到 Chat 网页模式：发送会打开 DeepSeek 网页端，不调用 API。'
+      : '已切换到 DSH 模式：发送走 DeepSeek API。'
+  );
+  inputEl.focus();
+}
+
 async function send() {
   if (busy) return;
   const q = inputEl.value.trim();
   const img = pendingImage;
+
+  // chat 模式 + 纯文字：不调用 API，直接打开 DeepSeek 网页端
+  if (mode === 'chat' && !img) {
+    if (!q) return;
+    inputEl.value = '';
+    setHint('');
+    addBubble('bot', '已打开 DeepSeek 网页聊天（chat 模式，不调用 API）。若未弹出请访问 chat.deepseek.com');
+    window.petAPI.openDeepseekWeb();
+    inputEl.focus();
+    return;
+  }
+
   if (!img && !q) return;
 
   const question = img ? (q || '请描述这张屏幕截图，说说上面有什么、重点信息是什么。') : q;
@@ -245,6 +285,7 @@ inputEl.addEventListener('keydown', (e) => {
 historyBtn.addEventListener('click', toggleHistory);
 newChatBtn.addEventListener('click', newChat);
 workspaceBtn.addEventListener('click', toggleWorkspace);
+modeBtn.addEventListener('click', toggleMode);
 document.addEventListener('click', (e) => {
   if (historyOpen && !e.target.closest('#history') && !e.target.closest('#history-panel')) {
     historyPanel.classList.remove('on');
@@ -369,4 +410,5 @@ if (!localStorage.getItem('chat-greeted')) {
   localStorage.setItem('chat-greeted', '1');
   addBubble('bot', '这里直接连着你的 DSH，直接聊就行；点「📸 截屏」可以针对屏幕内容提问。');
 }
+applyMode();
 inputEl.focus();
