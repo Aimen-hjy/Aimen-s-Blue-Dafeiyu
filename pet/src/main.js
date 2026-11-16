@@ -729,6 +729,7 @@ function togglePanel() {
   }
   const [x, y] = petWin.getPosition();
   const [w, h] = petWin.getSize();
+  const [pw, ph] = panelWin.getSize(); // 保留用户缩放后的尺寸
   const display = screen.getDisplayMatching({ x, y, width: w, height: h });
   const wa = display.workArea;
   let px;
@@ -741,14 +742,14 @@ function togglePanel() {
     // 首次打开：默认放鱼右侧，放不下放左侧
     px = x + w + 12;
     py = y;
-    if (px + PANEL_WIDTH > wa.x + wa.width) px = x - PANEL_WIDTH - 12;
+    if (px + pw > wa.x + wa.width) px = x - pw - 12;
   }
   // 夹紧到工作区（鱼移动后记住的偏移若越界，拉回可视区）
-  px = Math.max(wa.x, Math.min(px, wa.x + wa.width - PANEL_WIDTH));
-  py = Math.max(wa.y, Math.min(py, wa.y + wa.height - PANEL_HEIGHT));
+  px = Math.max(wa.x, Math.min(px, wa.x + wa.width - pw));
+  py = Math.max(wa.y, Math.min(py, wa.y + wa.height - ph));
   px = Math.round(px);
   py = Math.round(py);
-  panelWin.setBounds({ x: px, y: py, width: PANEL_WIDTH, height: PANEL_HEIGHT });
+  panelWin.setBounds({ x: px, y: py, width: pw, height: ph });
   panelOffset = { dx: px - x, dy: py - y };
   panelWin.show();
   panelWin.webContents.send('panel:refresh');
@@ -783,14 +784,15 @@ function showChat() {
   if (!chatWin || !petWin) return;
   const [x, y] = petWin.getPosition();
   const [w, h] = petWin.getSize();
+  const [cw, ch] = chatWin.getSize(); // 保留用户缩放后的尺寸
   const display = screen.getDisplayMatching({ x, y, width: w, height: h });
   const wa = display.workArea;
   let cx = x + w + 12;
-  let cy = y + h - CHAT_HEIGHT;
-  if (cx + CHAT_WIDTH > wa.x + wa.width) cx = x - CHAT_WIDTH - 12;
-  cx = Math.max(wa.x, Math.min(cx, wa.x + wa.width - CHAT_WIDTH));
-  cy = Math.max(wa.y, Math.min(cy, wa.y + wa.height - CHAT_HEIGHT));
-  chatWin.setBounds({ x: Math.round(cx), y: Math.round(cy), width: CHAT_WIDTH, height: CHAT_HEIGHT });
+  let cy = y + h - ch;
+  if (cx + cw > wa.x + wa.width) cx = x - cw - 12;
+  cx = Math.max(wa.x, Math.min(cx, wa.x + wa.width - cw));
+  cy = Math.max(wa.y, Math.min(cy, wa.y + wa.height - ch));
+  chatWin.setBounds({ x: Math.round(cx), y: Math.round(cy), width: cw, height: ch });
   chatWin.show();
   chatWin.webContents.send('chat:focus');
 }
@@ -821,16 +823,20 @@ ipcMain.on('pet:move', (_e, x, y) => {
   const nx = Math.round(x);
   const ny = Math.round(y);
   if (petWin) petWin.setBounds({ x: nx, y: ny, width: PET_WIDTH, height: PET_HEIGHT });
-  // 面板跟随鱼，保持相对位置
+  // 面板跟随鱼，保持相对位置（保留面板缩放后的尺寸）
   if (panelWin && panelWin.isVisible() && panelOffset) {
-    panelWin.setBounds({ x: nx + panelOffset.dx, y: ny + panelOffset.dy, width: PANEL_WIDTH, height: PANEL_HEIGHT });
+    const [pw, ph] = panelWin.getSize();
+    panelWin.setBounds({ x: nx + panelOffset.dx, y: ny + panelOffset.dy, width: pw, height: ph });
   }
 });
 ipcMain.handle('pet:get-panel-position', () => (panelWin ? panelWin.getPosition() : [0, 0]));
 ipcMain.on('panel:move', (_e, x, y) => {
   const nx = Math.round(x);
   const ny = Math.round(y);
-  if (panelWin) panelWin.setBounds({ x: nx, y: ny, width: PANEL_WIDTH, height: PANEL_HEIGHT });
+  if (panelWin) {
+    const [w, h] = panelWin.getSize(); // 拖动只改位置，保留缩放后的尺寸
+    panelWin.setBounds({ x: nx, y: ny, width: w, height: h });
+  }
   // 更新相对偏移，之后鱼移动时面板按新位置跟随
   if (petWin) {
     const [fx, fy] = petWin.getPosition();
@@ -850,7 +856,9 @@ ipcMain.on('chat:close', () => {
 });
 ipcMain.handle('chat:get-position', () => (chatWin ? chatWin.getPosition() : [0, 0]));
 ipcMain.on('chat:move', (_e, x, y) => {
-  if (chatWin) chatWin.setBounds({ x: Math.round(x), y: Math.round(y), width: CHAT_WIDTH, height: CHAT_HEIGHT });
+  if (!chatWin) return;
+  const [w, h] = chatWin.getSize(); // 拖动只改位置，保留用户缩放后的尺寸
+  chatWin.setBounds({ x: Math.round(x), y: Math.round(y), width: w, height: h });
 });
 ipcMain.on('chat:send', (_e, text, sessionId, workspace) => {
   if (!chatWin) return;

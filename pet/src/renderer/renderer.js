@@ -30,6 +30,29 @@ let winY = 0;
 let bubbleTimer = null;
 let currentSrc = null;
 
+// 命中检测：把当前帧画到离屏 canvas，读点击点的 alpha；透明区域（空白）不响应
+const hitCanvas = document.createElement('canvas');
+const hitCtx = hitCanvas.getContext('2d', { willReadFrequently: true });
+
+function isOnFish(clientX, clientY) {
+  const rect = video.getBoundingClientRect();
+  const vw = video.videoWidth || 640;
+  const vh = video.videoHeight || 360;
+  const x = ((clientX - rect.left) / rect.width) * vw;
+  const y = ((clientY - rect.top) / rect.height) * vh;
+  if (x < 0 || y < 0 || x >= vw || y >= vh) return false;
+  try {
+    if (hitCanvas.width !== vw) hitCanvas.width = vw;
+    if (hitCanvas.height !== vh) hitCanvas.height = vh;
+    hitCtx.clearRect(0, 0, vw, vh);
+    hitCtx.drawImage(video, 0, 0, vw, vh);
+    const d = hitCtx.getImageData(Math.floor(x), Math.floor(y), 1, 1).data;
+    return d[3] > 0; // alpha > 0 表示点在鱼身上
+  } catch {
+    return true; // 读取失败回退为可点击
+  }
+}
+
 // 预加载点击动画，避免首次点击的解码卡顿
 for (const src of CLICKS) {
   const v = document.createElement('video');
@@ -64,6 +87,7 @@ function playClick() {
 
 video.addEventListener('mousedown', (e) => {
   if (e.button !== 0) return; // 只处理左键拖拽；右键交给 contextmenu 菜单
+  if (!isOnFish(e.clientX, e.clientY)) return; // 空白处不响应
   dragging = true;
   moved = false;
   startX = e.screenX;
@@ -107,6 +131,7 @@ window.addEventListener('mouseup', (e) => {
 
 video.addEventListener('contextmenu', (e) => {
   e.preventDefault();
+  if (!isOnFish(e.clientX, e.clientY)) return; // 空白处不弹菜单
   window.petAPI.showContextMenu();
 });
 
