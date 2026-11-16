@@ -904,6 +904,8 @@ ipcMain.on('pet:context-menu', () => {
   const menu = Menu.buildFromTemplate([
     { label: '状态面板', click: () => togglePanel() },
     { label: '对话', click: () => toggleChat() },
+    { type: 'separator' },
+    { label: '退出', click: () => app.quit() },
   ]);
   menu.popup({ window: petWin });
 });
