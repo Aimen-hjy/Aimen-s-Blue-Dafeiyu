@@ -34,12 +34,19 @@ function scrollBottom() {
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
+function renderMarkdown(text) {
+  return marked.parse(String(text), { breaks: true, gfm: true });
+}
+
 function addBubble(role, text, imageUrl) {
   const div = document.createElement('div');
   div.className = 'msg ' + (role === 'user' ? 'user' : 'bot');
   let inner = '';
   if (imageUrl) inner += `<img class="shot" src="${imageUrl}" alt="截图" />`;
-  if (text) inner += `<div class="text">${esc(text)}</div>`;
+  if (text) {
+    const body = role === 'bot' ? renderMarkdown(text) : esc(text);
+    inner += `<div class="text">${body}</div>`;
+  }
   div.innerHTML = inner;
   messagesEl.appendChild(div);
   scrollBottom();
@@ -49,10 +56,13 @@ function addBubble(role, text, imageUrl) {
 function addStreamingBubble() {
   const div = document.createElement('div');
   div.className = 'msg bot';
-  div.textContent = '…';
+  const text = document.createElement('div');
+  text.className = 'text';
+  text.textContent = '…';
+  div.appendChild(text);
   messagesEl.appendChild(div);
   scrollBottom();
-  return div;
+  return text; // 返回内层 .text 元素，方便流式更新 markdown
 }
 
 function setHint(text) {
@@ -247,7 +257,7 @@ async function send() {
     streamingEl.textContent = '大肥鱼正在 DeepSeek 网页里聊…';
     try {
       const res = await window.petAPI.webSend(q);
-      if (res && res.ok && res.text) streamingEl.textContent = res.text;
+      if (res && res.ok && res.text) streamingEl.innerHTML = renderMarkdown(res.text);
       else streamingEl.textContent = '（出错了：' + ((res && res.error) || '未知错误') + '）';
     } catch (e) {
       streamingEl.textContent = '（调用失败：' + String(e) + '）';
@@ -276,7 +286,7 @@ async function send() {
     streamingEl.textContent = '大肥鱼在看屏幕…';
     try {
       const res = await window.petAPI.chatAskImage(img, question);
-      if (res && res.ok && res.text) streamingEl.textContent = res.text;
+      if (res && res.ok && res.text) streamingEl.innerHTML = renderMarkdown(res.text);
       else streamingEl.textContent = '（出错了：' + ((res && res.error) || '未知错误') + '）';
     } catch (e) {
       streamingEl.textContent = '（调用失败：' + String(e) + '）';
@@ -316,7 +326,7 @@ document.addEventListener('click', (e) => {
 window.petAPI.onChatToken((t) => {
   streamText += t;
   if (streamingEl) {
-    streamingEl.textContent = streamText;
+    streamingEl.innerHTML = renderMarkdown(streamText);
     scrollBottom();
   }
 });
@@ -325,7 +335,7 @@ window.petAPI.onChatDone((d) => {
   if (streamingEl) {
     if (d && d.ok) {
       if (d.sessionId) sessionId = d.sessionId;
-      if (!streamText && d.text) streamingEl.textContent = d.text;
+      if (!streamText && d.text) streamingEl.innerHTML = renderMarkdown(d.text);
     } else {
       streamingEl.textContent = '（出错了：' + ((d && d.error) || '未知错误') + '）';
     }
