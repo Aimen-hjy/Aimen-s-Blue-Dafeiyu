@@ -21,7 +21,7 @@ npm start
 - **右键**：弹出菜单，选择打开「状态面板」或「对话」
 - **拖拽**：跟随鼠标移动，鱼随方向轻微倾斜（保持待机画面，不改变大小）
 - **状态面板**：今日课程 + Canvas 任务 + DeepSeek 余额 / 当日消费金额；拖动标题栏移动，拖动鱼时面板保持相对位置跟随，点 × 关闭
-- **对话窗**：文字聊天走 **DSH**（headless 模式，会话连续）；点顶部「模式」图标在 **DSH（API）** 与 **Chat（DeepSeek 网页端）** 之间切换——chat 模式走 `chat.deepseek.com` 网页内部接口（`user_token` + PoW，不调用官方 API，需先 `campus-agent profile set-chat-token`）；点「🗂 工作区」选择 DSH 工作目录（决定新对话存到哪个 workspace）、「🕘 历史」查看/续聊历史会话、「＋」新建对话；点「📸 截屏」截取当前屏幕并针对屏幕提问（视觉问答，走 `deepseek-flash`）；点「🚀 DSH」启动完整 DSH Web UI（`http://127.0.0.1:3080`）
+- **对话窗**：文字聊天走 **DSH**（headless 模式，会话连续）；点顶部「模式」图标在 **DSH（API）** 与 **Chat（DeepSeek 网页端）** 之间切换——chat 模式走 `chat.deepseek.com` 网页内部接口（`user_token` + PoW，不调用官方 API，需先 `campus-agent profile set-chat-token`；**流式回传**、思考/正文分流、`parent_message_id` 多轮续聊）；点「🗂 工作区」选择 DSH 工作目录（决定新对话存到哪个 workspace）、「🕘 历史」查看/续聊历史会话、「＋」新建对话；点「📸 截屏」截取当前屏幕并针对屏幕提问（视觉问答，走 `deepseek-flash`）；点「🚀 DSH」启动完整 DSH Web UI（`http://127.0.0.1:3080`）
 - **窗口缩放**：状态面板 / 对话窗右下角有把手，拖动即可缩放（面板内容可滚轮滚动，右侧不显示滑动条）
 - **余额提醒**：启动后自动查 DeepSeek 余额，低于 ¥10 时鱼每 5 分钟冒一次气泡提醒充值（正常时每 30 分钟查一次）
 
@@ -40,7 +40,14 @@ npm start
 
 > `deepseekUserToken` 是浏览器登录 `platform.deepseek.com` 后 localStorage 里的 `userToken`（形如 `{"value":"...","__version":"0"}`，取其中 `value`）。公开 API 只有余额，没有逐日金额；该接口是平台私密接口，token 过期后需重新到浏览器里取一次。推荐用 `campus-agent profile set-user-token` 存入当前 profile（随 profile 切换），也可存 `pet/src/config.json`（gitignore，纯本地）。
 
-> `chatToken` 是浏览器登录 `chat.deepseek.com` 后 localStorage 里的 `user_token`（直接是字符串）。chat 模式走网页内部接口（`/api/v0/chat/completion` + `X-Ds-Pow-Response` PoW，参考 `Wu-jiyan/deepseek-reverse-api`）不调用官方 API；token 过期后需重新到浏览器里取一次。用 `campus-agent profile set-chat-token <token>` 存入当前 profile。
+> `chatToken` 是浏览器登录 `chat.deepseek.com` 后 localStorage 里的 `user_token`。chat 模式走网页内部接口（`/api/v0/chat/completion` + `X-Ds-Pow-Response` PoW，参考 `kittors/deepseek-web-api`）不调用官方 API。**注意：`chat.deepseek.com` 在 WAF 后面，除了 `user_token` 还必须带 cookie（`ds_session_id` 等），否则请求会被拦下返回空响应。**
+>
+> 桌宠默认从 `pet/data/auth.json` 读取登录快照（`{ "token": "...", "cookie": "..." }`，格式同 deepseek-web-api 的 `data/auth.json`）。获取方式任选其一：
+> - 把 `deepseek-web-api` 登录后生成的 `data/auth.json` 复制到 `pet/data/auth.json`；
+> - 或用环境变量 `DEEPSEEK_CHAT_AUTH=D:\路径\auth.json` 指向它；
+> - 或直接设 `DEEPSEEK_CHAT_COOKIE` 环境变量给 cookie 字符串、`DEEPSEEK_CHAT_TOKEN` 给 token。
+>
+> chat 模式可选环境变量：`DEEPSEEK_WEB_MODEL=default|expert`（默认 `default`，即 flash/pro）、`DEEPSEEK_WEB_THINKING=0|1`（默认**关**思考，设 `1` 开启）、`DEEPSEEK_WEB_SEARCH=0|1`（默认关联网搜索，仅 flash 生效）、`DEEPSEEK_WEB_DEBUG=1`（把上游 SSE 原始事件写到 `pet/data/webchat-debug.log`）。
 
 ## 素材
 
@@ -60,3 +67,8 @@ npm start
 ## 性能说明
 
 动画完全由 Chromium 的视频解码器处理，空闲时 JS 主循环不参与持续动画；拖拽/点击期间才短暂走 JS。
+
+## TODO
+- 程序化更新usertoken，保持会话有效性
+- 优化pet动画，减少运行内存占用
+- pet互动逻辑优化

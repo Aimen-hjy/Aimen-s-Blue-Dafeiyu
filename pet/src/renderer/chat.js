@@ -19,6 +19,7 @@ let pendingImage = null; // 截屏后待发送的 data URL
 let busy = false;
 let streamingEl = null; // 正在流式输出的气泡
 let streamText = '';
+let streamReasoning = ''; // web 模式思考通道累计（正文为空时用于回退）
 let historyOpen = false; // 历史下拉是否展开
 let workspaceOpen = false; // 工作区下拉是否展开
 let workspace = localStorage.getItem('chat-workspace') || ''; // '' = 默认工作区
@@ -245,7 +246,7 @@ async function send() {
   const q = inputEl.value.trim();
   const img = pendingImage;
 
-  // chat 模式 + 纯文字：不调用 API，用隐藏浏览器驱动 DeepSeek 网页端
+  // chat 模式 + 纯文字：走 chat.deepseek.com 网页端内部接口（流式，不调用官方 API）
   if (mode === 'chat' && !img) {
     if (!q) return;
     addBubble('user', q);
@@ -253,20 +254,11 @@ async function send() {
     setHint('');
     busy = true;
     sendBtn.disabled = true;
+    streamText = '';
+    streamReasoning = '';
     streamingEl = addStreamingBubble();
     streamingEl.textContent = '大肥鱼正在 DeepSeek 网页里聊…';
-    try {
-      const res = await window.petAPI.webSend(q);
-      if (res && res.ok && res.text) streamingEl.innerHTML = renderMarkdown(res.text);
-      else streamingEl.textContent = '（出错了：' + ((res && res.error) || '未知错误') + '）';
-    } catch (e) {
-      streamingEl.textContent = '（调用失败：' + String(e) + '）';
-    } finally {
-      streamingEl = null;
-      busy = false;
-      sendBtn.disabled = false;
-      inputEl.focus();
-    }
+    window.petAPI.webSend(q); // 结果走 onWebToken / onWebDone 回传
     return;
   }
 
@@ -342,6 +334,40 @@ window.petAPI.onChatDone((d) => {
     streamingEl = null;
     streamText = '';
   }
+  busy = false;
+  sendBtn.disabled = false;
+  inputEl.focus();
+});
+
+// —— chat 模式（网页端）流式回传：思考占位 → 正文 markdown ——
+window.petAPI.onWebToken((d) => {
+  if (!streamingEl) return;
+  if (d && d.type === 'text' && d.text) {
+    streamText += d.text;
+    streamingEl.innerHTML = renderMarkdown(streamText);
+    scrollBottom();
+  } else if (d && d.type === 'thinking') {
+    streamReasoning += d.text || '';
+    if (!streamText) streamingEl.textContent = '大肥鱼正在思考…';
+  }
+});
+
+window.petAPI.onWebDone((d) => {
+  if (streamingEl) {
+    if (d && d.ok) {
+      if (!streamText && d.text) {
+        streamText = d.text;
+        streamingEl.innerHTML = renderMarkdown(d.text);
+      } else if (!streamText && !d.text) {
+        streamingEl.textContent = '（没有收到回复）';
+      }
+    } else {
+      streamingEl.textContent = '（出错了：' + ((d && d.error) || '未知错误') + '）';
+    }
+    streamingEl = null;
+  }
+  streamText = '';
+  streamReasoning = '';
   busy = false;
   sendBtn.disabled = false;
   inputEl.focus();

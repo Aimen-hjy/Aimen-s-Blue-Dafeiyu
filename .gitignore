@@ -2,7 +2,7 @@ node_modules/
 dist/
 *.log
 .DS_Store
-rubbish/
+test_rubbish/
 
 # 本地凭证与配置（绝不入库）
 config.json
@@ -11,6 +11,8 @@ config.json
 .env.*
 password
 minimaxpaikey
+# chat.deepseek.com 登录快照（token+cookie，绝不入库）
+pet/data/
 
 # 参考源码（Dela，仅本地逆向对照用，不入交付物）
 .reference/

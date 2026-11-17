@@ -382,30 +382,59 @@ function openDsh() {
 }
 
 // —— chat 模式：走 chat.deepseek.com 网页端内部接口 + PoW（不调用官方 API）——
-function resolveChatToken() {
-  if (process.env.DEEPSEEK_CHAT_TOKEN) return normalizeToken(process.env.DEEPSEEK_CHAT_TOKEN);
-  const campusCfg = readCampusConfig();
-  if (campusCfg && campusCfg.deepseek && campusCfg.deepseek.chatToken) {
-    return normalizeToken(String(campusCfg.deepseek.chatToken));
-  }
-  return null;
-}
+/**
+ * 解析 chat.deepseek.com 登录态（user_token + cookie）。
+ * cookie 很关键：chat.deepseek.com 在 WAF 后面，不带 cookie（ds_session_id 等）会被拦下返回空响应。
+ * 优先级：环境变量 > auth.json（最新登录快照）> campus profile > config.json。
+ * auth.json 可用 DEEPSEEK_CHAT_AUTH 指定路径，默认 pet/data/auth.json（格式同 deepseek-web-api）。
+ */
+function resolveChatAuth() {
+  let token = process.env.DEEPSEEK_CHAT_TOKEN ? normalizeToken(process.env.DEEPSEEK_CHAT_TOKEN) : null;
+  let cookie = process.env.DEEPSEEK_CHAT_COOKIE ? process.env.DEEPSEEK_CHAT_COOKIE.trim() : null;
 
-/** 走网页端发一条消息并读回完整回复（非流式）。 */
-async function webChatSend(text) {
-  const token = resolveChatToken();
-  if (!token) {
-    return {
-      ok: false,
-      error: '未配置 chat.deepseek.com 的 user_token（运行 campus-agent profile set-chat-token <token>）',
-    };
+  const authFile = process.env.DEEPSEEK_CHAT_AUTH || path.join(__dirname, '..', 'data', 'auth.json');
+  try {
+    const a = JSON.parse(fs.readFileSync(authFile, 'utf8'));
+    if (!token && a && typeof a.token === 'string' && a.token) token = normalizeToken(a.token);
+    if (!cookie && a && typeof a.cookie === 'string' && a.cookie) cookie = a.cookie.trim();
+  } catch {}
+
+  const campusCfg = readCampusConfig();
+  if (campusCfg && campusCfg.deepseek) {
+    if (!token && campusCfg.deepseek.chatToken) token = normalizeToken(String(campusCfg.deepseek.chatToken));
+    if (!cookie && campusCfg.deepseek.chatCookie) cookie = String(campusCfg.deepseek.chatCookie).trim();
   }
   try {
-    const reply = await webChat(token, String(text));
-    return { ok: true, text: reply };
-  } catch (e) {
-    return { ok: false, error: String((e && e.message) || e) };
+    const cfg = JSON.parse(fs.readFileSync(path.join(__dirname, 'config.json'), 'utf8'));
+    if (!token && cfg.chatToken) token = normalizeToken(String(cfg.chatToken));
+    if (!cookie && cfg.chatCookie) cookie = String(cfg.chatCookie).trim();
+  } catch {}
+
+  return { token, cookie };
+}
+
+/** 走网页端发一条消息，流式回传 token 给 onToken，结束回传结果给 onDone。 */
+function webChatSend(text, onToken, onDone) {
+  const { token, cookie } = resolveChatAuth();
+  if (!token) {
+    onDone({
+      ok: false,
+      error: '未配置 chat.deepseek.com 的 user_token（运行 campus-agent profile set-chat-token <token>）',
+    });
+    return;
   }
+  if (!cookie) console.warn('[webchat] 未配置 chat cookie，请求可能被 WAF 拦截');
+  webChat(token, String(text), {
+    modelType: process.env.DEEPSEEK_WEB_MODEL || 'default', // 'default'=flash / 'expert'=pro
+    thinking: process.env.DEEPSEEK_WEB_THINKING === '1', // 默认关闭思考，直接出正文
+    search: process.env.DEEPSEEK_WEB_SEARCH === '1',
+    cookie,
+    onToken: (d) => onToken(d),
+  })
+    .then((r) =>
+      onDone({ ok: true, text: r.text, reasoning: r.reasoning, sessionId: r.sessionId, tokens: r.tokens })
+    )
+    .catch((e) => onDone({ ok: false, error: String((e && e.message) || e) }));
 }
 
 /**
@@ -888,8 +917,15 @@ ipcMain.handle('chat:ask-image', (_e, dataUrl, text) => {
 });
 ipcMain.handle('chat:screenshot', () => captureScreen());
 ipcMain.handle('chat:open-dsh', () => openDsh());
-// chat 模式：走 chat.deepseek.com 网页端内部接口，不调用官方 API
-ipcMain.handle('chat:web-send', (_e, text) => webChatSend(String(text || '')));
+// chat 模式：走 chat.deepseek.com 网页端内部接口，不调用官方 API，流式回传 token
+ipcMain.on('chat:web-send', (_e, text) => {
+  if (!chatWin) return;
+  webChatSend(
+    String(text || ''),
+    (delta) => chatWin.webContents.send('chat:web-token', delta),
+    (result) => chatWin.webContents.send('chat:web-done', result)
+  );
+});
 ipcMain.handle('chat:web-reset', () => {
   resetWebChat();
   return { ok: true };
