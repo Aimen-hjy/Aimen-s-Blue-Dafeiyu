@@ -728,6 +728,8 @@ function createPetWindow() {
     height: PET_HEIGHT,
   });
   petWin.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  // 透明区域点击穿透：默认忽略鼠标事件，仅鱼身 hitbox 区域可交互（renderer 按 hover 切换）
+  petWin.setIgnoreMouseEvents(true, { forward: true });
 }
 
 function createPanelWindow() {
@@ -851,6 +853,10 @@ process.on('uncaughtException', (err) => {
 app.on('window-all-closed', () => app.quit());
 
 ipcMain.handle('pet:get-position', () => (petWin ? petWin.getPosition() : [0, 0]));
+// 鱼身 hitbox 的 hover 切换：true=捕获鼠标可交互，false=点击穿透到下层应用
+ipcMain.on('pet:set-clickable', (_e, v) => {
+  if (petWin && !petWin.isDestroyed()) petWin.setIgnoreMouseEvents(!v, { forward: true });
+});
 ipcMain.on('pet:move', (_e, x, y) => {
   // 用 setBounds 显式锁定宽高：高 DPI 下 setPosition 会因 DIP 舍入累积把窗口撑宽
   const nx = Math.round(x);

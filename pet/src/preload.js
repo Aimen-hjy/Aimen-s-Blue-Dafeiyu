@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('petAPI', {
   getPosition: () => ipcRenderer.invoke('pet:get-position'),
   move: (x, y) => ipcRenderer.send('pet:move', x, y),
+  setClickable: (v) => ipcRenderer.send('pet:set-clickable', v),
   getPanelPosition: () => ipcRenderer.invoke('pet:get-panel-position'),
   movePanel: (x, y) => ipcRenderer.send('panel:move', x, y),
   togglePanel: () => ipcRenderer.send('pet:toggle-panel'),

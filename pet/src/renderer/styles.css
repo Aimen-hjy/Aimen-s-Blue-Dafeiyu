@@ -27,9 +27,9 @@ body {
    要改点击范围，就改下面 left / top / width / height 四个值 */
 #hitbox {
   position: absolute;
-  left: 15%;
-  top: 10%;
-  width: 70%;
+  left: 30%;
+  top: 25%;
+  width: 40%;
   height: 80%;
   cursor: grab;
 }

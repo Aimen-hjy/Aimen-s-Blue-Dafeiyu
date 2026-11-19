@@ -111,6 +111,18 @@ hitbox.addEventListener('contextmenu', (e) => {
   window.petAPI.showContextMenu();
 });
 
+// 透明区域点击穿透：只有光标在 hitbox（鱼身）上才让窗口捕获鼠标，否则穿透到下层应用
+let clickable = false;
+document.addEventListener('mousemove', (e) => {
+  if (dragging) return; // 拖拽期间保持捕获，避免松手前穿透把拖拽打断
+  const el = document.elementFromPoint(e.clientX, e.clientY);
+  const over = !!(el && el.closest && el.closest('#hitbox'));
+  if (over !== clickable) {
+    clickable = over;
+    window.petAPI.setClickable(over);
+  }
+});
+
 function showBubble(text) {
   bubble.textContent = text;
   bubble.classList.remove('hidden');
